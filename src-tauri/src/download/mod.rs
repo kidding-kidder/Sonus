@@ -5,6 +5,6 @@ pub mod ytdlp;
 #[allow(unused_imports)]
 pub use queue::DownloadWorker;
 #[allow(unused_imports)]
-pub use spotify::SpotDlConfig;
+pub use spotify::SpotDlEngine;
 #[allow(unused_imports)]
 pub use ytdlp::YtDlpEngine;

@@ -41,14 +41,21 @@ export class DownloadsView {
         else if (d.status === "downloading") badgeColor = "var(--color-accent)";
         else if (d.status === "failed") badgeColor = "var(--color-danger)";
 
+        const isPlaylist = d.url.includes("playlist") || d.url.includes("list=") || d.url.includes("/album/");
+
         return `
-          <tr style="height: 42px; border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);">
+          <tr style="height: 44px; border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);">
             <td style="padding: 0 var(--space-3); color: var(--color-text-muted); font-size: var(--font-size-xs);">#${d.id}</td>
-            <td style="padding: 0 var(--space-3); font-weight: var(--font-weight-medium); max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${this.escape(d.url)}
-              ${d.error ? `<div style="font-size: var(--font-size-xs); color: var(--color-danger);">${this.escape(d.error)}</div>` : ""}
+            <td style="padding: 0 var(--space-3); font-weight: var(--font-weight-medium); max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              <div style="display: flex; align-items: center; gap: var(--space-2);">
+                ${isPlaylist ? `<span style="font-size: 10px; background-color: var(--color-accent); color: white; padding: 1px 5px; border-radius: var(--radius-sm); font-weight: var(--font-weight-bold); text-transform: uppercase;">Playlist</span>` : ""}
+                <span title="${this.escape(d.url)}">${this.escape(d.url)}</span>
+              </div>
+              ${d.error ? `<div style="font-size: var(--font-size-xs); color: ${d.status === "completed" ? "var(--color-success)" : "var(--color-danger)"};">${this.escape(d.error)}</div>` : ""}
             </td>
-            <td style="padding: 0 var(--space-3); text-transform: capitalize; color: var(--color-text-secondary);">${d.source}</td>
+            <td style="padding: 0 var(--space-3); text-transform: capitalize; color: var(--color-text-secondary); font-weight: var(--font-weight-medium);">
+              ${d.source === "spotify" ? `<span style="color: #1ed760; font-weight: bold;">Spotify</span>` : d.source}
+            </td>
             <td style="padding: 0 var(--space-3);">
               <span style="display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm); font-size: var(--font-size-xs); text-transform: uppercase; font-weight: var(--font-weight-bold); border: 1px solid ${badgeColor}; color: ${badgeColor};">
                 ${d.status}
@@ -74,28 +81,37 @@ export class DownloadsView {
     this.container.innerHTML = `
       <div style="display: flex; flex-direction: column; gap: var(--space-5); height: 100%;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2 style="font-size: var(--font-size-xl); font-weight: var(--font-weight-bold);">${STRINGS.downloads.title}</h2>
+          <div>
+            <h2 style="font-size: var(--font-size-xl); font-weight: var(--font-weight-bold);">${STRINGS.downloads.title}</h2>
+            <p style="font-size: var(--font-size-xs); color: var(--color-text-muted); margin-top: 2px;">Download tracks or full playlists from Spotify, YouTube, SoundCloud, and Bandcamp.</p>
+          </div>
           <button id="btn-clear-completed" class="btn-secondary">${STRINGS.downloads.clearCompletedBtn}</button>
         </div>
 
         <!-- Download Input Bar -->
-        <div style="display: flex; gap: var(--space-3); background-color: var(--color-bg-surface); padding: var(--space-4); border: var(--border-width-hairline) solid var(--color-border); border-radius: var(--radius-sm);">
-          <input
-            id="download-url-input"
-            type="text"
-            placeholder="${STRINGS.downloads.inputPlaceholder}"
-            style="flex: 1; background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); padding: var(--space-2) var(--space-3); color: var(--color-text-primary); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-base);"
-          />
-          <select id="download-source-select" style="background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); outline: none;">
-            <option value="youtube">YouTube</option>
-            <option value="soundcloud">SoundCloud</option>
-            <option value="bandcamp">Bandcamp</option>
-            <option value="url">Direct Audio URL</option>
-          </select>
-          <button id="btn-enqueue" class="btn-primary" style="display: flex; align-items: center; gap: var(--space-2);">
-            <span style="width: 14px; height: 14px; display: inline-block;">${ICONS.download}</span>
-            <span>${STRINGS.downloads.downloadBtn}</span>
-          </button>
+        <div style="display: flex; flex-direction: column; gap: var(--space-2); background-color: var(--color-bg-surface); padding: var(--space-4); border: var(--border-width-hairline) solid var(--color-border); border-radius: var(--radius-sm);">
+          <div style="display: flex; gap: var(--space-3);">
+            <input
+              id="download-url-input"
+              type="text"
+              placeholder="${STRINGS.downloads.inputPlaceholder}"
+              style="flex: 1; background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); padding: var(--space-2) var(--space-3); color: var(--color-text-primary); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-base);"
+            />
+            <select id="download-source-select" style="background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); outline: none; font-weight: var(--font-weight-medium);">
+              <option value="spotify">Spotify</option>
+              <option value="youtube">YouTube</option>
+              <option value="soundcloud">SoundCloud</option>
+              <option value="bandcamp">Bandcamp</option>
+              <option value="url">Direct Audio URL</option>
+            </select>
+            <button id="btn-enqueue" class="btn-primary" style="display: flex; align-items: center; gap: var(--space-2);">
+              <span style="width: 14px; height: 14px; display: inline-block;">${ICONS.download}</span>
+              <span>${STRINGS.downloads.downloadBtn}</span>
+            </button>
+          </div>
+          <div id="playlist-detected-banner" style="display: none; font-size: var(--font-size-xs); color: var(--color-accent); align-items: center; gap: var(--space-2);">
+            <span>✓ Playlist detected: all tracks will be downloaded and grouped into a new playlist automatically.</span>
+          </div>
         </div>
 
         <!-- Queue Table -->
@@ -108,9 +124,9 @@ export class DownloadsView {
                 <thead>
                   <tr style="height: 36px; border-bottom: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-muted); font-size: var(--font-size-xs); text-transform: uppercase;">
                     <th style="padding: 0 var(--space-3); width: 60px;">ID</th>
-                    <th style="padding: 0 var(--space-3);">URL / Target</th>
+                    <th style="padding: 0 var(--space-3);">URL / Playlist</th>
                     <th style="padding: 0 var(--space-3); width: 120px;">Source</th>
-                    <th style="padding: 0 var(--space-3); width: 120px;">Status</th>
+                    <th style="padding: 0 var(--space-3); width: 140px;">Status</th>
                     <th style="padding: 0 var(--space-3); width: 100px; text-align: right;">Action</th>
                   </tr>
                 </thead>
@@ -131,11 +147,38 @@ export class DownloadsView {
     const enqueueBtn = this.container.querySelector("#btn-enqueue");
     const urlInput = this.container.querySelector<HTMLInputElement>("#download-url-input");
     const sourceSelect = this.container.querySelector<HTMLSelectElement>("#download-source-select");
+    const banner = this.container.querySelector<HTMLElement>("#playlist-detected-banner");
+
+    const updateDetection = (): void => {
+      if (!urlInput || !sourceSelect) return;
+      const val = urlInput.value.trim().toLowerCase();
+
+      if (val.includes("spotify.com") || val.startsWith("spotify:")) {
+        sourceSelect.value = "spotify";
+      } else if (val.includes("youtube.com") || val.includes("youtu.be")) {
+        sourceSelect.value = "youtube";
+      } else if (val.includes("soundcloud.com")) {
+        sourceSelect.value = "soundcloud";
+      } else if (val.includes("bandcamp.com")) {
+        sourceSelect.value = "bandcamp";
+      }
+
+      const isPlaylist = val.includes("playlist") || val.includes("list=") || val.includes("/album/") || val.includes("/sets/");
+      if (banner) {
+        banner.style.display = isPlaylist ? "flex" : "none";
+      }
+    };
+
+    urlInput?.addEventListener("input", updateDetection);
+    urlInput?.addEventListener("paste", () => {
+      setTimeout(updateDetection, 10);
+    });
 
     const submit = (): void => {
       if (urlInput && sourceSelect && urlInput.value.trim()) {
         this.callbacks.onEnqueue(urlInput.value.trim(), sourceSelect.value);
         urlInput.value = "";
+        if (banner) banner.style.display = "none";
       }
     };
 

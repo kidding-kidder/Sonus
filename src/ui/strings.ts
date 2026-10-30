@@ -22,7 +22,6 @@ export const STRINGS = {
     emptyTitle: "Your Library is Empty",
     emptySubtitle: "Scan your local audio folder or add downloads to begin listening.",
     scanFolderBtn: "Choose Audio Folder",
-    seedDemoBtn: "Seed 20k Benchmark Tracks",
     tableHeaderTrack: "Title",
     tableHeaderArtist: "Artist",
     tableHeaderAlbum: "Album",
@@ -48,7 +47,7 @@ export const STRINGS = {
   downloads: {
     title: "Download Queue",
     emptyQueue: "No active or recent downloads.",
-    inputPlaceholder: "Paste YouTube, SoundCloud, or Bandcamp link...",
+    inputPlaceholder: "Paste Spotify, YouTube, SoundCloud song or playlist URL...",
     downloadBtn: "Download",
     clearCompletedBtn: "Clear Completed",
   },

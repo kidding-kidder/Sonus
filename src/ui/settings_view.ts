@@ -78,6 +78,19 @@ export class SettingsView {
           </div>
         </div>
 
+        <!-- Downloader Settings -->
+        <div style="background-color: var(--color-bg-surface); padding: var(--space-5); border: var(--border-width-hairline) solid var(--color-border); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: var(--space-3);">
+          <h3 style="font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);">${STRINGS.settings.defaultSource}</h3>
+          <p style="font-size: var(--font-size-sm); color: var(--color-text-muted);">Default source for music and playlist downloads (supports full Spotify & YouTube playlists).</p>
+          <select id="select-default-source" style="max-width: 300px; background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); outline: none;">
+            <option value="spotify" ${this.state.defaultSource === "spotify" ? "selected" : ""}>Spotify (via spotdl)</option>
+            <option value="youtube" ${this.state.defaultSource === "youtube" ? "selected" : ""}>YouTube (via yt-dlp)</option>
+            <option value="soundcloud" ${this.state.defaultSource === "soundcloud" ? "selected" : ""}>SoundCloud</option>
+            <option value="bandcamp" ${this.state.defaultSource === "bandcamp" ? "selected" : ""}>Bandcamp</option>
+            <option value="url" ${this.state.defaultSource === "url" ? "selected" : ""}>Direct Audio URL</option>
+          </select>
+        </div>
+
         <!-- Audio Settings Section -->
         <div style="background-color: var(--color-bg-surface); padding: var(--space-5); border: var(--border-width-hairline) solid var(--color-border); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: var(--space-4);">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -163,6 +176,14 @@ export class SettingsView {
     scanBtn?.addEventListener("click", () => {
       if (pathInput) {
         this.callbacks.onScanFolder(pathInput.value.trim());
+      }
+    });
+
+    // Default source select
+    const defaultSourceSelect = this.container.querySelector<HTMLSelectElement>("#select-default-source");
+    defaultSourceSelect?.addEventListener("change", () => {
+      if (defaultSourceSelect) {
+        this.callbacks.onUpdateSetting("default_source", defaultSourceSelect.value);
       }
     });
 
