@@ -37,3 +37,15 @@ pub fn clear_completed_downloads(db: State<'_, DbPool>) -> Result<(), String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     queries::clear_completed_downloads(&conn).map_err(|e| e.to_string())
 }
+
+#[command]
+pub fn delete_download(id: i64, db: State<'_, DbPool>) -> Result<(), String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    queries::delete_download(&conn, id).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn clear_cancelled_or_failed_downloads(db: State<'_, DbPool>) -> Result<(), String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    queries::clear_cancelled_or_failed_downloads(&conn).map_err(|e| e.to_string())
+}

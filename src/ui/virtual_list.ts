@@ -4,18 +4,21 @@ export interface TrackItem {
   id: number;
   path: string;
   source: string;
-  source_id?: string;
   title: string;
   artist: string;
   album: string;
   duration_ms: number;
-  is_liked: boolean;
+  bitrate?: number;
+  format: string;
+  cover_id?: number;
   added_at: number;
+  is_liked: boolean;
 }
 
 export interface VirtualListCallbacks {
   onPlayTrack: (track: TrackItem) => void;
   onToggleLike: (track: TrackItem) => void;
+  onDeleteTrack?: (track: TrackItem) => void;
   onNearBottom: () => void;
 }
 
@@ -38,11 +41,21 @@ export class VirtualTrackList {
 
   public setTracks(tracks: TrackItem[]): void {
     this.tracks = tracks;
-    this.render();
+    this.selectedIds.clear();
+    this.lastClickedIndex = -1;
+    this.updateTotalHeight();
+    this.renderVisibleRows();
   }
 
   public appendTracks(newTracks: TrackItem[]): void {
     this.tracks.push(...newTracks);
+    this.updateTotalHeight();
+    this.renderVisibleRows();
+  }
+
+  public removeTrackLocally(trackId: number): void {
+    this.tracks = this.tracks.filter((t) => t.id !== trackId);
+    this.selectedIds.delete(trackId);
     this.updateTotalHeight();
     this.renderVisibleRows();
   }
@@ -58,23 +71,24 @@ export class VirtualTrackList {
   public render(): void {
     this.container.innerHTML = `
       <div class="virtual-list-wrapper" style="position: relative; height: 100%; display: flex; flex-direction: column;">
-        <div class="table-header" style="height: 34px; display: grid; grid-template-columns: 40px 2fr 1.5fr 1.5fr 70px 40px; align-items: center; padding: 0 var(--space-4); border-bottom: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-muted); font-size: var(--font-size-xs); text-transform: uppercase; font-weight: var(--font-weight-semibold);">
+        <div class="table-header" style="height: 34px; display: grid; grid-template-columns: 40px 2.2fr 1.6fr 1.6fr 70px 32px 32px; align-items: center; padding: 0 var(--space-4); border-bottom: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-muted); font-size: var(--font-size-xs); text-transform: uppercase; font-weight: var(--font-weight-semibold);">
           <span>#</span>
           <span>Title</span>
           <span>Artist</span>
           <span>Album</span>
           <span style="text-align: right;">Time</span>
-          <span></span>
+          <span style="text-align: center;">♥</span>
+          <span style="text-align: center;">⋯</span>
         </div>
         <div id="virtual-scroll" style="flex: 1; overflow-y: auto; position: relative;">
-          <div id="virtual-total" style="width: 100%; position: relative;"></div>
-          <div id="virtual-content" style="position: absolute; top: 0; left: 0; width: 100%;"></div>
+          <div id="total-height-shim" style="width: 1px; pointer-events: none;"></div>
+          <div id="virtual-content" style="position: absolute; top: 0; left: 0; right: 0; will-change: transform;"></div>
         </div>
       </div>
     `;
 
     this.scrollContainer = this.container.querySelector("#virtual-scroll");
-    this.totalHeightEl = this.container.querySelector("#virtual-total");
+    this.totalHeightEl = this.container.querySelector("#total-height-shim");
     this.contentEl = this.container.querySelector("#virtual-content");
 
     this.updateTotalHeight();
@@ -94,10 +108,8 @@ export class VirtualTrackList {
 
   private handleScroll(): void {
     if (!this.scrollContainer) return;
-
     this.renderVisibleRows();
 
-    // Infinite scroll trigger at 80% scroll
     const scrollTop = this.scrollContainer.scrollTop;
     const clientHeight = this.scrollContainer.clientHeight;
     const scrollHeight = this.scrollContainer.scrollHeight;
@@ -136,16 +148,21 @@ export class VirtualTrackList {
             class="track-row ${isSelected ? "selected" : ""}"
             data-id="${t.id}"
             data-index="${actualIdx}"
-            style="height: ${this.rowHeight}px; display: grid; grid-template-columns: 40px 2fr 1.5fr 1.5fr 70px 40px; align-items: center; padding: 0 var(--space-4); border-bottom: var(--border-width-hairline) solid var(--color-border-subtle); cursor: pointer; background-color: ${isSelected ? "var(--color-bg-active)" : "transparent"};"
+            style="height: ${this.rowHeight}px; display: grid; grid-template-columns: 40px 2.2fr 1.6fr 1.6fr 70px 32px 32px; align-items: center; padding: 0 var(--space-4); border-bottom: var(--border-width-hairline) solid var(--color-border-subtle); cursor: pointer; background-color: ${isSelected ? "var(--color-bg-active)" : "transparent"};"
           >
             <span style="font-size: var(--font-size-xs); color: var(--color-text-muted);">${actualIdx + 1}</span>
-            <span style="font-weight: var(--font-weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: var(--space-2);">${this.escape(t.title)}</span>
+            <span style="font-weight: var(--font-weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: var(--space-2); color: var(--color-text-primary);">${this.escape(t.title)}</span>
             <span style="color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: var(--space-2);">${this.escape(t.artist)}</span>
             <span style="color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: var(--space-2);">${this.escape(t.album)}</span>
             <span style="color: var(--color-text-muted); font-family: var(--font-family-mono); font-size: var(--font-size-xs); text-align: right;">${this.formatTime(t.duration_ms)}</span>
-            <span style="text-align: right;">
-              <button class="btn-row-heart" data-id="${t.id}" style="background: none; border: none; cursor: pointer; color: ${heartColor}; display: flex; align-items: center; justify-content: flex-end; width: 100%;">
-                <span style="width: 14px; height: 14px; display: inline-block;">${heartIcon}</span>
+            <span style="display: flex; justify-content: center;">
+              <button class="btn-row-heart" data-id="${t.id}" title="${t.is_liked ? "Liked" : "Like"}" style="background: none; border: none; cursor: pointer; color: ${heartColor}; display: flex; align-items: center; justify-content: center; padding: 2px;">
+                <span style="width: 14px; height: 14px; display: block;">${heartIcon}</span>
+              </button>
+            </span>
+            <span style="display: flex; justify-content: center;">
+              <button class="btn-row-delete" data-id="${t.id}" title="Remove / Delete Track" style="background: none; border: none; cursor: pointer; color: var(--color-text-muted); display: flex; align-items: center; justify-content: center; padding: 2px;">
+                <span style="width: 14px; height: 14px; display: block;">${ICONS.trash}</span>
               </button>
             </span>
           </div>
@@ -166,14 +183,12 @@ export class VirtualTrackList {
       const track = this.tracks[idx];
       if (!track) return;
 
-      // Double-click to play
       row.addEventListener("dblclick", () => {
         this.callbacks.onPlayTrack(track);
       });
 
-      // Click with Shift/Ctrl multi-select
       row.addEventListener("click", (e) => {
-        if ((e.target as HTMLElement).closest(".btn-row-heart")) {
+        if ((e.target as HTMLElement).closest(".btn-row-heart") || (e.target as HTMLElement).closest(".btn-row-delete")) {
           return;
         }
 
@@ -185,12 +200,12 @@ export class VirtualTrackList {
           }
           this.lastClickedIndex = idx;
         } else if (e.shiftKey && this.lastClickedIndex >= 0) {
-          this.selectedIds.clear();
           const start = Math.min(this.lastClickedIndex, idx);
           const end = Math.max(this.lastClickedIndex, idx);
+          this.selectedIds.clear();
           for (let i = start; i <= end; i++) {
-            const tr = this.tracks[i];
-            if (tr) this.selectedIds.add(tr.id);
+            const t = this.tracks[i];
+            if (t) this.selectedIds.add(t.id);
           }
         } else {
           this.selectedIds.clear();
@@ -200,11 +215,16 @@ export class VirtualTrackList {
         this.renderVisibleRows();
       });
 
-      // Like button
-      const heartBtn = row.querySelector(".btn-row-heart");
-      heartBtn?.addEventListener("click", (e) => {
+      row.querySelector(".btn-row-heart")?.addEventListener("click", (e) => {
         e.stopPropagation();
         this.callbacks.onToggleLike(track);
+      });
+
+      row.querySelector(".btn-row-delete")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (this.callbacks.onDeleteTrack) {
+          this.callbacks.onDeleteTrack(track);
+        }
       });
     });
   }

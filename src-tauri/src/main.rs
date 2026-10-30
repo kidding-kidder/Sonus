@@ -29,6 +29,27 @@ fn resolve_paths<R: tauri::Runtime>(
     Ok((db_path, temp_dir, music_dir))
 }
 
+#[tauri::command]
+fn window_minimize(window: tauri::Window) {
+    let _ = window.minimize();
+}
+
+#[tauri::command]
+fn window_toggle_maximize(window: tauri::Window) {
+    if let Ok(m) = window.is_maximized() {
+        if m {
+            let _ = window.unmaximize();
+        } else {
+            let _ = window.maximize();
+        }
+    }
+}
+
+#[tauri::command]
+fn window_close(window: tauri::Window) {
+    let _ = window.close();
+}
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -93,6 +114,12 @@ fn main() {
             commands::download::retry_download,
             commands::download::cancel_download,
             commands::download::clear_completed_downloads,
+            commands::download::delete_download,
+            commands::download::clear_cancelled_or_failed_downloads,
+            // Window controls
+            window_minimize,
+            window_toggle_maximize,
+            window_close,
             // Settings commands
             commands::settings::get_setting,
             commands::settings::set_setting,

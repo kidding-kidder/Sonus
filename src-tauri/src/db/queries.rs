@@ -119,6 +119,7 @@ pub fn toggle_like_track(conn: &Connection, track_id: i64) -> Result<bool> {
 }
 
 pub fn remove_track(conn: &Connection, track_id: i64) -> Result<()> {
+    conn.execute("DELETE FROM playlist_tracks WHERE track_id = ?1", params![track_id])?;
     conn.execute("DELETE FROM tracks WHERE id = ?1", params![track_id])?;
     Ok(())
 }
@@ -255,6 +256,16 @@ pub fn update_download_status(conn: &Connection, id: i64, status: &str, error: O
 
 pub fn clear_completed_downloads(conn: &Connection) -> Result<()> {
     conn.execute("DELETE FROM downloads WHERE status = 'completed'", [])?;
+    Ok(())
+}
+
+pub fn delete_download(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM downloads WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn clear_cancelled_or_failed_downloads(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM downloads WHERE status IN ('cancelled', 'failed')", [])?;
     Ok(())
 }
 

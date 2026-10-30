@@ -82,7 +82,7 @@ export class SettingsView {
         <div style="background-color: var(--color-bg-surface); padding: var(--space-5); border: var(--border-width-hairline) solid var(--color-border); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: var(--space-3);">
           <h3 style="font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);">${STRINGS.settings.defaultSource}</h3>
           <p style="font-size: var(--font-size-sm); color: var(--color-text-muted);">Default source for music and playlist downloads (supports full Spotify & YouTube playlists).</p>
-          <select id="select-default-source" style="max-width: 300px; background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); outline: none;">
+          <select id="select-default-source" style="max-width: 320px; background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); outline: none;">
             <option value="spotify" ${this.state.defaultSource === "spotify" ? "selected" : ""}>Spotify (via spotdl)</option>
             <option value="youtube" ${this.state.defaultSource === "youtube" ? "selected" : ""}>YouTube (via yt-dlp)</option>
             <option value="soundcloud" ${this.state.defaultSource === "soundcloud" ? "selected" : ""}>SoundCloud</option>
@@ -134,6 +134,18 @@ export class SettingsView {
         <div style="background-color: var(--color-bg-surface); padding: var(--space-5); border: var(--border-width-hairline) solid var(--color-border); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: var(--space-4);">
           <h3 style="font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);">${STRINGS.settings.appearance}</h3>
           
+          <!-- Theme Dropdown -->
+          <div>
+            <label style="font-size: var(--font-size-sm); color: var(--color-text-secondary); display: block; margin-bottom: var(--space-1);">Theme Palette</label>
+            <select id="select-theme" style="max-width: 320px; width: 100%; background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); outline: none;">
+              <option value="dark" ${this.state.theme === "dark" || this.state.theme === "system" ? "selected" : ""}>Obsidian Dark (Default)</option>
+              <option value="amoled" ${this.state.theme === "amoled" ? "selected" : ""}>AMOLED True Black</option>
+              <option value="midnight" ${this.state.theme === "midnight" ? "selected" : ""}>Midnight Blue</option>
+              <option value="cyberpunk" ${this.state.theme === "cyberpunk" ? "selected" : ""}>Cyberpunk Neon</option>
+              <option value="light" ${this.state.theme === "light" ? "selected" : ""}>Clean Light</option>
+            </select>
+          </div>
+
           <div style="display: flex; gap: var(--space-3); align-items: center;">
             <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Accent Color:</span>
             <div id="accent-picker" style="display: flex; gap: var(--space-2);">
@@ -153,10 +165,10 @@ export class SettingsView {
 
           <!-- Raw CSS Injection -->
           <div>
-            <label style="font-size: var(--font-size-sm); color: var(--color-text-secondary); display: block; margin-bottom: var(--space-1);">Custom CSS Injection (Power Users)</label>
+            <label style="font-size: var(--font-size-sm); color: var(--color-text-secondary); display: block; margin-bottom: var(--space-1);">Custom CSS Injection</label>
             <textarea
               id="custom-css-input"
-              rows="4"
+              rows="3"
               placeholder=":root { --font-size-base: 13px; }"
               style="width: 100%; background-color: var(--color-bg-base); border: var(--border-width-hairline) solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-family-mono); padding: var(--space-2); border-radius: var(--radius-sm); font-size: var(--font-size-xs); outline: none;"
             >${this.state.customCss}</textarea>
@@ -170,7 +182,6 @@ export class SettingsView {
   }
 
   private bindEvents(): void {
-    // Scan folder trigger
     const scanBtn = this.container.querySelector("#btn-scan-trigger");
     const pathInput = this.container.querySelector<HTMLInputElement>("#setting-lib-path");
     scanBtn?.addEventListener("click", () => {
@@ -179,7 +190,6 @@ export class SettingsView {
       }
     });
 
-    // Default source select
     const defaultSourceSelect = this.container.querySelector<HTMLSelectElement>("#select-default-source");
     defaultSourceSelect?.addEventListener("change", () => {
       if (defaultSourceSelect) {
@@ -187,7 +197,16 @@ export class SettingsView {
       }
     });
 
-    // Crossfade slider
+    const themeSelect = this.container.querySelector<HTMLSelectElement>("#select-theme");
+    themeSelect?.addEventListener("change", () => {
+      if (themeSelect) {
+        const theme = themeSelect.value;
+        this.state.theme = theme;
+        document.documentElement.setAttribute("data-theme", theme);
+        this.callbacks.onUpdateSetting("theme", theme);
+      }
+    });
+
     const crossfadeSlider = this.container.querySelector<HTMLInputElement>("#slider-crossfade");
     const crossfadeLabel = this.container.querySelector("#label-crossfade");
     crossfadeSlider?.addEventListener("input", () => {
@@ -196,13 +215,11 @@ export class SettingsView {
       this.callbacks.onUpdateCrossfade(sec);
     });
 
-    // ReplayGain select
     const rgSelect = this.container.querySelector<HTMLSelectElement>("#select-replaygain");
     rgSelect?.addEventListener("change", () => {
       this.callbacks.onUpdateSetting("replaygain_mode", rgSelect.value);
     });
 
-    // EQ Sliders
     const eqSliders = this.container.querySelectorAll<HTMLInputElement>(".eq-slider");
     eqSliders.forEach((slider) => {
       slider.addEventListener("input", () => {
@@ -212,7 +229,6 @@ export class SettingsView {
       });
     });
 
-    // Reset EQ
     const resetEqBtn = this.container.querySelector("#btn-reset-eq");
     resetEqBtn?.addEventListener("click", () => {
       this.state.eqBands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -220,7 +236,6 @@ export class SettingsView {
       this.render();
     });
 
-    // Accent picker
     const accentBtns = this.container.querySelectorAll<HTMLElement>(".btn-accent-color");
     accentBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -234,7 +249,6 @@ export class SettingsView {
       });
     });
 
-    // Apply CSS
     const applyCssBtn = this.container.querySelector("#btn-apply-css");
     const cssInput = this.container.querySelector<HTMLTextAreaElement>("#custom-css-input");
     applyCssBtn?.addEventListener("click", () => {

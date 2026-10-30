@@ -182,10 +182,11 @@ fn run_engine_loop(
     };
 
     let mut decoder: Option<TrackDecoder> = None;
-    let mut decode_chunk = Vec::with_capacity(4096);
-    let mut chunk_pos = 0;
-    let mut frames_played = 0u64;
+    let mut decode_chunk = Vec::with_capacity(8192);
     let mut current_sr = 44100u32;
+    let mut frac_pos = 0.0f64;
+    let mut hw_frames_played = 0u64;
+
     let eq_freqs = [31.0, 63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0];
     let mut eq_left: Vec<BiquadFilter> = eq_freqs.iter().map(|&f| BiquadFilter::new_peaking(hw_sample_rate as f32, f, 0.0, 1.41)).collect();
     let mut eq_right: Vec<BiquadFilter> = eq_freqs.iter().map(|&f| BiquadFilter::new_peaking(hw_sample_rate as f32, f, 0.0, 1.41)).collect();
@@ -204,10 +205,10 @@ fn run_engine_loop(
                             current_sr = dec.sample_rate;
                             duration_ms.store(dec.duration_ms as i64, Ordering::Relaxed);
                             current_track_id.store(track_id, Ordering::Relaxed);
-                            frames_played = (start_ms * current_sr as u64) / 1000;
+                            hw_frames_played = (start_ms * hw_sample_rate as u64) / 1000;
                             position_ms.store(start_ms as i64, Ordering::Relaxed);
                             decode_chunk.clear();
-                            chunk_pos = 0;
+                            frac_pos = 0.0;
                             decoder = Some(dec);
                             is_playing.store(true, Ordering::Relaxed);
                         }
@@ -230,8 +231,8 @@ fn run_engine_loop(
                     if let Some(dec) = &mut decoder {
                         if dec.seek(ms).is_ok() {
                             decode_chunk.clear();
-                            chunk_pos = 0;
-                            frames_played = (ms * current_sr as u64) / 1000;
+                            frac_pos = 0.0;
+                            hw_frames_played = (ms * hw_sample_rate as u64) / 1000;
                             position_ms.store(ms as i64, Ordering::Relaxed);
                         }
                     }
@@ -262,14 +263,26 @@ fn run_engine_loop(
 
         let dec = decoder.as_mut().unwrap();
 
-        // Feed samples into ring buffer
-        if chunk_pos >= decode_chunk.len() {
-            decode_chunk.clear();
-            chunk_pos = 0;
+        // Ensure we have decoded frames to resample from
+        let in_frames = decode_chunk.len() / 2;
+        if frac_pos + 2.0 >= in_frames as f64 {
+            let keep_frames = if in_frames > 0 {
+                let last_l = decode_chunk[(in_frames - 1) * 2];
+                let last_r = decode_chunk[(in_frames - 1) * 2 + 1];
+                decode_chunk.clear();
+                decode_chunk.push(last_l);
+                decode_chunk.push(last_r);
+                frac_pos = 0.0;
+                1
+            } else {
+                decode_chunk.clear();
+                frac_pos = 0.0;
+                0
+            };
+
             match dec.decode_next_stereo_chunk(&mut decode_chunk) {
                 Ok(has_more) => {
-                    if !has_more || decode_chunk.is_empty() {
-                        // Track completed
+                    if (!has_more || decode_chunk.len() <= keep_frames * 2) && in_frames == 0 {
                         decoder = None;
                         is_playing.store(false, Ordering::Relaxed);
                         continue;
@@ -284,11 +297,27 @@ fn run_engine_loop(
             }
         }
 
+        let updated_in_frames = decode_chunk.len() / 2;
+        if updated_in_frames < 2 {
+            thread::sleep(std::time::Duration::from_millis(5));
+            continue;
+        }
+
+        let ratio = current_sr as f64 / hw_sample_rate as f64;
         let vol = f32::from_bits(volume_bits.load(Ordering::Relaxed));
 
-        while chunk_pos + 1 < decode_chunk.len() {
-            let mut left = decode_chunk[chunk_pos] * vol;
-            let mut right = decode_chunk[chunk_pos + 1] * vol;
+        // Generate output frames at hw_sample_rate via linear interpolation
+        while frac_pos + 1.0 < updated_in_frames as f64 {
+            let idx = frac_pos as usize;
+            let alpha = (frac_pos - idx as f64) as f32;
+
+            let l0 = decode_chunk[idx * 2];
+            let r0 = decode_chunk[idx * 2 + 1];
+            let l1 = decode_chunk[(idx + 1) * 2];
+            let r1 = decode_chunk[(idx + 1) * 2 + 1];
+
+            let mut left = (l0 + alpha * (l1 - l0)) * vol;
+            let mut right = (r0 + alpha * (r1 - r0)) * vol;
 
             for eq in eq_left.iter_mut() {
                 left = eq.process(left);
@@ -302,15 +331,15 @@ fn run_engine_loop(
             }
             let _ = sample_tx.try_send(right);
 
-            chunk_pos += 2;
-            frames_played += 1;
+            frac_pos += ratio;
+            hw_frames_played += 1;
 
-            if frames_played % (current_sr as u64 / 10) == 0 {
-                let ms = (frames_played * 1000) / (current_sr as u64);
+            if hw_frames_played % (hw_sample_rate as u64 / 10) == 0 {
+                let ms = (hw_frames_played * 1000) / (hw_sample_rate as u64);
                 position_ms.store(ms as i64, Ordering::Relaxed);
             }
         }
 
-        thread::sleep(std::time::Duration::from_millis(5));
+        thread::sleep(std::time::Duration::from_millis(3));
     }
 }

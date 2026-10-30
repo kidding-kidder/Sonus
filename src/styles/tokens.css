@@ -1,5 +1,5 @@
 :root {
-  /* Colors - Clean Flat Dark Palette */
+  /* Default Theme: Clean Obsidian Dark */
   --color-bg-base: #121214;
   --color-bg-surface: #18181b;
   --color-bg-elevated: #222226;
@@ -54,15 +54,16 @@
   --space-8: 32px;
 
   /* Sizing */
+  --titlebar-height: 32px;
   --sidebar-width: 240px;
-  --player-bar-height: 64px;
+  --player-bar-height: 68px;
   --row-height: 38px;
   --topbar-height: 48px;
 
   /* Geometry & Borders */
   --radius-none: 0px;
-  --radius-sm: 3px;
-  --radius-md: 5px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: 8px;
   --radius-full: 9999px;
 
@@ -71,4 +72,55 @@
   /* Transitions */
   --transition-fast: 100ms ease;
   --transition-normal: 180ms ease;
+}
+
+[data-theme="amoled"] {
+  --color-bg-base: #000000;
+  --color-bg-surface: #09090b;
+  --color-bg-elevated: #121215;
+  --color-bg-hover: #18181c;
+  --color-bg-active: #222228;
+  --color-border: #18181c;
+  --color-border-subtle: #0f0f12;
+  --color-text-primary: #ffffff;
+}
+
+[data-theme="midnight"] {
+  --color-bg-base: #0a0f1d;
+  --color-bg-surface: #10172a;
+  --color-bg-elevated: #1e293b;
+  --color-bg-hover: #293548;
+  --color-bg-active: #334155;
+  --color-border: #1e293b;
+  --color-border-subtle: #131d31;
+  --color-text-primary: #f8fafc;
+  --color-accent: #38bdf8;
+}
+
+[data-theme="cyberpunk"] {
+  --color-bg-base: #090217;
+  --color-bg-surface: #130629;
+  --color-bg-elevated: #200a40;
+  --color-bg-hover: #31115e;
+  --color-bg-active: #4a198c;
+  --color-border: #ff2a6d;
+  --color-border-subtle: #2d0b54;
+  --color-text-primary: #05d9e8;
+  --color-text-secondary: #ff2a6d;
+  --color-text-muted: #e2bbfd;
+  --color-accent: #05d9e8;
+}
+
+[data-theme="light"] {
+  --color-bg-base: #f4f4f5;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: #e4e4e7;
+  --color-bg-hover: #d4d4d8;
+  --color-bg-active: #cbd5e1;
+  --color-border: #e4e4e7;
+  --color-border-subtle: #f1f5f9;
+  --color-text-primary: #09090b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #71717a;
+  --color-accent: #0284c7;
 }

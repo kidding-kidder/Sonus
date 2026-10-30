@@ -12,16 +12,20 @@ export interface PlaylistInfo {
 export interface ShellCallbacks {
   onNavigate: (view: string, playlistId?: number) => void;
   onSearch: (query: string) => void;
-  onSeedBenchmark: () => void;
   onScanFolder: () => void;
   onCreatePlaylist: (name: string) => void;
+  onRenamePlaylist: (id: number, newName: string) => void;
   onDeletePlaylist: (id: number) => void;
   onTogglePlay: () => void;
   onNext: () => void;
   onPrev: () => void;
-  onSeek: (ms: number) => void;
+  onSeek: (frac: number) => void;
   onVolume: (vol: number) => void;
   onToggleCurrentHeart: () => void;
+  onToggleNowPlayingPanel: () => void;
+  onWindowMinimize: () => void;
+  onWindowToggleMaximize: () => void;
+  onWindowClose: () => void;
 }
 
 export class AppShell {
@@ -41,23 +45,55 @@ export class AppShell {
     this.renderPlaylists();
   }
 
+  public setActiveView(view: string, playlistId?: number): void {
+    this.currentView = view;
+    this.currentPlaylistId = playlistId;
+
+    this.container.querySelectorAll<HTMLElement>(".nav-item").forEach((el) => {
+      const v = el.dataset["view"];
+      const pid = el.dataset["playlistId"] ? Number(el.dataset["playlistId"]) : undefined;
+      const isActive = (view === "playlist" && pid === playlistId) || (v === view && view !== "playlist");
+      el.classList.toggle("active", isActive);
+    });
+
+    this.updateHeaderTitle();
+  }
+
   public render(): void {
     this.container.innerHTML = `
-      <div class="layout-container">
-        <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
-          <div class="sidebar-header">
-            <span class="icon" style="color: var(--color-accent);">${ICONS.music}</span>
-            <span>${STRINGS.app.title}</span>
-          </div>
+      <!-- Custom Windows 11 Title Bar -->
+      <div class="titlebar" data-tauri-drag-region>
+        <div class="titlebar-brand" data-tauri-drag-region>
+          <span style="width: 18px; height: 18px; display: inline-block;">${ICONS.appLogo}</span>
+          <span>Sonus</span>
+        </div>
+        <div id="titlebar-ticker" class="titlebar-drag" data-tauri-drag-region>
+          Sonus — Local-First Music Player
+        </div>
+        <div class="titlebar-controls">
+          <button id="btn-win-min" class="titlebar-btn" title="Minimize">
+            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+          </button>
+          <button id="btn-win-max" class="titlebar-btn" title="Maximize">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="1" y="1" width="8" height="8" stroke-width="1"/></svg>
+          </button>
+          <button id="btn-win-close" class="titlebar-btn btn-close" title="Close">
+            <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor"><line x1="1" y1="1" x2="9" y2="9" stroke-width="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke-width="1.2"/></svg>
+          </button>
+        </div>
+      </div>
 
+      <!-- Main Layout -->
+      <div class="layout-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
           <div class="sidebar-section">
             <div class="nav-item ${this.currentView === "all_songs" ? "active" : ""}" data-view="all_songs">
               <span class="icon">${ICONS.music}</span>
               <span>${STRINGS.nav.allSongs}</span>
             </div>
             <div class="nav-item ${this.currentView === "liked" ? "active" : ""}" data-view="liked">
-              <span class="icon" style="color: var(--color-danger);">${ICONS.heart}</span>
+              <span class="icon" style="color: var(--color-danger);">${ICONS.heartFilled}</span>
               <span>${STRINGS.nav.liked}</span>
             </div>
           </div>
@@ -66,7 +102,7 @@ export class AppShell {
           <div class="sidebar-section" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 var(--space-2) var(--space-2) var(--space-2);">
               <span class="sidebar-section-title" style="padding: 0;">${STRINGS.nav.playlists}</span>
-              <button id="btn-add-playlist" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px;">+</button>
+              <button id="btn-add-playlist" title="Create Playlist" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px;">+</button>
             </div>
             <div id="sidebar-playlists" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;"></div>
           </div>
@@ -83,40 +119,43 @@ export class AppShell {
           </div>
         </aside>
 
-        <!-- Main Workspace -->
+        <!-- Center Main Content -->
         <main class="main-content">
           <header class="topbar">
-            <div class="search-box">
-              <span class="icon">${ICONS.search}</span>
-              <input
-                id="search-input"
-                type="text"
-                placeholder="${STRINGS.search.placeholder}"
-                autocomplete="off"
-                spellcheck="false"
-              />
+            <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+              <h2 id="view-title" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">All Songs</h2>
+              <button id="btn-rename-playlist" title="Rename Playlist" style="display: none; background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center;">
+                <span style="width: 14px; height: 14px; display: inline-block;">${ICONS.edit}</span>
+              </button>
             </div>
-            <div id="library-stats" style="font-size: var(--font-size-xs); color: var(--color-text-muted);">
-              ${STRINGS.app.offlineNotice}
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+              <div class="search-box">
+                <span class="icon" style="color: var(--color-text-muted); width: 14px; height: 14px;">${ICONS.search}</span>
+                <input id="search-input" type="text" placeholder="${STRINGS.search.placeholder}" />
+              </div>
+              <span id="library-stats" style="font-size: var(--font-size-xs); color: var(--color-text-muted); white-space: nowrap;"></span>
             </div>
           </header>
 
-          <section id="view-container" class="view-container"></section>
+          <div id="view-container" class="view-container"></div>
         </main>
+
+        <!-- Right "Now Playing" Panel -->
+        <aside id="now-playing-panel" style="display: flex;"></aside>
       </div>
 
-      <!-- Now-Playing Bar -->
+      <!-- Bottom Now-Playing Transport Bar -->
       <footer class="now-playing-bar">
         <div class="track-info">
           <div class="track-cover-thumb">
-            <span class="icon" style="color: var(--color-text-muted);">${ICONS.music}</span>
+            <span class="icon" style="color: var(--color-text-muted); width: 20px; height: 20px;">${ICONS.music}</span>
           </div>
           <div class="track-metadata">
             <span id="player-title" class="track-title">${STRINGS.playback.unknownTitle}</span>
             <span id="player-artist" class="track-artist">${STRINGS.playback.unknownArtist}</span>
           </div>
-          <button id="btn-player-heart" class="control-btn" title="${STRINGS.playback.like}">
-            <span class="icon" style="color: var(--color-text-muted);">${ICONS.heart}</span>
+          <button id="btn-player-heart" class="control-btn" style="margin-left: var(--space-1);" title="${STRINGS.playback.like}">
+            <span class="icon" style="color: var(--color-text-muted); width: 16px; height: 16px;">${ICONS.heart}</span>
           </button>
         </div>
 
@@ -142,14 +181,12 @@ export class AppShell {
         </div>
 
         <div class="secondary-controls">
-          <button id="btn-queue" class="control-btn" title="${STRINGS.playback.queue}">
-            <span class="icon">${ICONS.queue}</span>
+          <button id="btn-toggle-panel" class="control-btn" title="Toggle Now Playing View">
+            <span class="icon">${ICONS.sidebarRight}</span>
           </button>
           <div class="volume-slider-container">
             <span class="icon" style="color: var(--color-text-secondary); width: 14px; height: 14px;">${ICONS.volume}</span>
-            <div id="volume-track" class="progress-bar-container">
-              <div id="volume-fill" class="progress-bar-fill" style="width: 80%;"></div>
-            </div>
+            <input type="range" id="volume-range" class="volume-range" min="0" max="1" step="0.01" value="0.8" />
           </div>
         </div>
       </footer>
@@ -157,6 +194,32 @@ export class AppShell {
 
     this.bindEvents();
     this.renderPlaylists();
+  }
+
+  private updateHeaderTitle(): void {
+    const titleEl = this.container.querySelector("#view-title");
+    const renameBtn = this.container.querySelector<HTMLElement>("#btn-rename-playlist");
+    if (!titleEl) return;
+
+    if (this.currentView === "all_songs" || this.currentView === "home") {
+      titleEl.textContent = STRINGS.nav.allSongs;
+      if (renameBtn) renameBtn.style.display = "none";
+    } else if (this.currentView === "liked") {
+      titleEl.textContent = STRINGS.nav.liked;
+      if (renameBtn) renameBtn.style.display = "none";
+    } else if (this.currentView === "downloads") {
+      titleEl.textContent = STRINGS.nav.downloads;
+      if (renameBtn) renameBtn.style.display = "none";
+    } else if (this.currentView === "settings") {
+      titleEl.textContent = STRINGS.nav.settings;
+      if (renameBtn) renameBtn.style.display = "none";
+    } else if (this.currentView === "playlist" && this.currentPlaylistId !== undefined) {
+      const pl = this.playlists.find((p) => p.id === this.currentPlaylistId);
+      titleEl.textContent = pl ? pl.name : "Playlist";
+      if (renameBtn) {
+        renameBtn.style.display = pl && !pl.is_system ? "inline-flex" : "none";
+      }
+    }
   }
 
   private renderPlaylists(): void {
@@ -168,7 +231,7 @@ export class AppShell {
         (p) => `
         <div class="nav-item ${this.currentView === "playlist" && this.currentPlaylistId === p.id ? "active" : ""}" data-playlist-id="${p.id}" style="display: flex; justify-content: space-between;">
           <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${this.escape(p.name)}</span>
-          ${!p.is_system ? `<button class="btn-delete-pl" data-id="${p.id}" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; font-size: 11px;">×</button>` : ""}
+          ${!p.is_system ? `<button class="btn-delete-pl" data-id="${p.id}" title="Delete Playlist" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; font-size: 11px;">✕</button>` : ""}
         </div>
       `,
       )
@@ -178,8 +241,7 @@ export class AppShell {
       item.addEventListener("click", (e) => {
         if ((e.target as HTMLElement).closest(".btn-delete-pl")) return;
         const plId = Number(item.dataset["playlistId"]);
-        this.currentView = "playlist";
-        this.currentPlaylistId = plId;
+        this.setActiveView("playlist", plId);
         this.callbacks.onNavigate("playlist", plId);
       });
     });
@@ -194,50 +256,57 @@ export class AppShell {
   }
 
   private bindEvents(): void {
-    // Navigation
-    this.container.querySelectorAll<HTMLElement>(".nav-item[data-view]").forEach((item) => {
+    // Window controls
+    this.container.querySelector("#btn-win-min")?.addEventListener("click", () => this.callbacks.onWindowMinimize());
+    this.container.querySelector("#btn-win-max")?.addEventListener("click", () => this.callbacks.onWindowToggleMaximize());
+    this.container.querySelector("#btn-win-close")?.addEventListener("click", () => this.callbacks.onWindowClose());
+
+    // Navigation items
+    this.container.querySelectorAll<HTMLElement>(".sidebar .nav-item[data-view]").forEach((item) => {
       item.addEventListener("click", () => {
         const view = item.dataset["view"];
         if (view) {
-          this.currentView = view;
-          this.currentPlaylistId = undefined;
+          this.setActiveView(view);
           this.callbacks.onNavigate(view);
         }
       });
     });
 
-    // Create playlist button
+    // Create playlist
     this.container.querySelector("#btn-add-playlist")?.addEventListener("click", () => {
       const name = prompt("Enter new playlist name:");
-      if (name && name.trim()) {
-        this.callbacks.onCreatePlaylist(name.trim());
+      if (name && name.trim()) this.callbacks.onCreatePlaylist(name.trim());
+    });
+
+    // Rename playlist
+    this.container.querySelector("#btn-rename-playlist")?.addEventListener("click", () => {
+      if (this.currentPlaylistId !== undefined) {
+        const pl = this.playlists.find((p) => p.id === this.currentPlaylistId);
+        const newName = prompt("Rename playlist:", pl?.name ?? "");
+        if (newName && newName.trim()) {
+          this.callbacks.onRenamePlaylist(this.currentPlaylistId, newName.trim());
+        }
       }
     });
 
     // Search input
     let searchDebounce: number | undefined;
-    this.container.querySelector<HTMLInputElement>("#search-input")?.addEventListener("input", (e) => {
+    const searchInput = this.container.querySelector<HTMLInputElement>("#search-input");
+    searchInput?.addEventListener("input", () => {
       window.clearTimeout(searchDebounce);
       searchDebounce = window.setTimeout(() => {
-        this.callbacks.onSearch((e.target as HTMLInputElement).value);
+        this.callbacks.onSearch(searchInput.value.trim());
       }, 200);
     });
 
     // Transport controls
-    this.container.querySelector("#btn-play-pause")?.addEventListener("click", () => {
-      this.callbacks.onTogglePlay();
-    });
-    this.container.querySelector("#btn-next")?.addEventListener("click", () => {
-      this.callbacks.onNext();
-    });
-    this.container.querySelector("#btn-prev")?.addEventListener("click", () => {
-      this.callbacks.onPrev();
-    });
-    this.container.querySelector("#btn-player-heart")?.addEventListener("click", () => {
-      this.callbacks.onToggleCurrentHeart();
-    });
+    this.container.querySelector("#btn-play-pause")?.addEventListener("click", () => this.callbacks.onTogglePlay());
+    this.container.querySelector("#btn-next")?.addEventListener("click", () => this.callbacks.onNext());
+    this.container.querySelector("#btn-prev")?.addEventListener("click", () => this.callbacks.onPrev());
+    this.container.querySelector("#btn-player-heart")?.addEventListener("click", () => this.callbacks.onToggleCurrentHeart());
+    this.container.querySelector("#btn-toggle-panel")?.addEventListener("click", () => this.callbacks.onToggleNowPlayingPanel());
 
-    // Scrubber seek click
+    // Scrubber click
     const progressContainer = this.container.querySelector<HTMLElement>("#progress-container");
     progressContainer?.addEventListener("click", (e) => {
       const rect = progressContainer.getBoundingClientRect();
@@ -245,12 +314,10 @@ export class AppShell {
       this.callbacks.onSeek(frac);
     });
 
-    // Volume slider click
-    const volumeTrack = this.container.querySelector<HTMLElement>("#volume-track");
-    volumeTrack?.addEventListener("click", (e) => {
-      const rect = volumeTrack.getBoundingClientRect();
-      const vol = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      this.setVolumeVisual(vol);
+    // Real Smooth Volume Slider
+    const volSlider = this.container.querySelector<HTMLInputElement>("#volume-range");
+    volSlider?.addEventListener("input", () => {
+      const vol = Number(volSlider.value);
       this.callbacks.onVolume(vol);
     });
   }
@@ -263,30 +330,37 @@ export class AppShell {
     const timeTot = this.container.querySelector("#time-total");
     const fill = this.container.querySelector<HTMLElement>("#progress-fill");
     const heartBtn = this.container.querySelector("#btn-player-heart");
+    const ticker = this.container.querySelector("#titlebar-ticker");
 
     if (titleEl) titleEl.textContent = title;
     if (artistEl) artistEl.textContent = artist;
-    if (playPauseBtn) playPauseBtn.innerHTML = `<span class="icon">${isPlaying ? ICONS.pause : ICONS.play}</span>`;
+    if (playPauseBtn) {
+      playPauseBtn.innerHTML = `<span class="icon">${isPlaying ? ICONS.pause : ICONS.play}</span>`;
+    }
     if (timeCur) timeCur.textContent = this.formatTime(posMs);
     if (timeTot) timeTot.textContent = this.formatTime(durMs);
-
     if (fill && durMs > 0) {
-      const pct = Math.min(100, (posMs / durMs) * 100);
-      fill.style.width = `${pct}%`;
+      fill.style.width = `${Math.min(100, (posMs / durMs) * 100)}%`;
     }
-
     if (heartBtn) {
-      heartBtn.innerHTML = `<span class="icon" style="color: ${isLiked ? "var(--color-danger)" : "var(--color-text-muted)"}">${isLiked ? ICONS.heartFilled : ICONS.heart}</span>`;
+      heartBtn.innerHTML = `<span class="icon" style="color: ${isLiked ? "var(--color-danger)" : "var(--color-text-muted)"}; width: 16px; height: 16px;">${isLiked ? ICONS.heartFilled : ICONS.heart}</span>`;
+    }
+    if (ticker) {
+      ticker.textContent = isPlaying ? `Sonus — ${title} • ${artist}` : "Sonus — Local-First Music Player";
     }
   }
 
   public setVolumeVisual(vol: number): void {
-    const fill = this.container.querySelector<HTMLElement>("#volume-fill");
-    if (fill) fill.style.width = `${vol * 100}%`;
+    const volSlider = this.container.querySelector<HTMLInputElement>("#volume-range");
+    if (volSlider) volSlider.value = String(vol);
   }
 
   public getViewContainer(): HTMLElement {
     return this.container.querySelector("#view-container") as HTMLElement;
+  }
+
+  public getNowPlayingPanelContainer(): HTMLElement {
+    return this.container.querySelector("#now-playing-panel") as HTMLElement;
   }
 
   public updateLibraryStats(text: string): void {
@@ -295,13 +369,17 @@ export class AppShell {
   }
 
   private formatTime(ms: number): string {
-    const sec = Math.floor(ms / 1000);
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${s < 10 ? "0" : ""}${s}`;
+    const totalSec = Math.floor(ms / 1000);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}:${sec < 10 ? "0" : ""}${sec}`;
   }
 
   private escape(str: string): string {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 }

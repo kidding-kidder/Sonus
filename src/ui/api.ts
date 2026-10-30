@@ -42,20 +42,34 @@ export const api = {
   getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
 
   toggleLike: (trackId: number) => invoke<boolean>("toggle_like", { trackId }),
+  removeTrack: (trackId: number, deleteFile: boolean = false) =>
+    invoke<void>("remove_track", { trackId, deleteFile }),
 
   listPlaylists: () => invoke<PlaylistInfo[]>("list_playlists"),
   createPlaylist: (name: string, description: string = "") =>
     invoke<number>("create_playlist", { name, description }),
+  renamePlaylist: (id: number, newName: string) =>
+    invoke<void>("rename_playlist", { id, newName }),
   deletePlaylist: (id: number) => invoke<void>("delete_playlist", { id }),
+  removeTrackFromPlaylist: (playlistId: number, trackId: number) =>
+    invoke<void>("remove_track_from_playlist", { playlistId, trackId }),
 
   enqueueDownload: (url: string, source: string) =>
     invoke<number>("enqueue_download", { url, source }),
   listDownloads: () => invoke<DownloadRow[]>("list_downloads"),
   retryDownload: (id: number) => invoke<void>("retry_download", { id }),
   cancelDownload: (id: number) => invoke<void>("cancel_download", { id }),
+  deleteDownload: (id: number) => invoke<void>("delete_download", { id }),
   clearCompletedDownloads: () => invoke<void>("clear_completed_downloads"),
+  clearCancelledOrFailedDownloads: () =>
+    invoke<void>("clear_cancelled_or_failed_downloads"),
 
   scanFolder: (folderPath: string) => invoke<number>("scan_library_folder", { folderPath }),
   seedBenchmark: (count: number) => invoke<number>("seed_tracks", { count }),
   setSetting: (key: string, value: string) => invoke<void>("set_setting", { key, value }),
+
+  // Custom Titlebar window controls
+  windowMinimize: () => invoke<void>("window_minimize"),
+  windowToggleMaximize: () => invoke<void>("window_toggle_maximize"),
+  windowClose: () => invoke<void>("window_close"),
 };
