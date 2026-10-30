@@ -1,0 +1,30 @@
+[package]
+name = "sonus"
+version = "0.1.0"
+description = "Local-first desktop music player and downloader"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+symphonia = { version = "0.5.4", features = ["all-codecs", "all-formats"] }
+cpal = "0.15"
+blake3 = "1.5"
+image = { version = "0.25", default-features = false, features = ["webp", "jpeg", "png"] }
+tokio = { version = "1", features = ["full"] }
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+crossbeam-channel = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

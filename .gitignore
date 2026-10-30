@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+target/
+src-tauri/target/
+
+# Build artifacts
+dist/
+dist-ssr/
+*.bundle
+*.msi
+*.exe
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.log
