@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { AppShell } from "./ui/shell";
+import { SnowOverlay } from "./ui/snow";
 import { STRINGS } from "./ui/strings";
 import { ToastManager } from "./ui/toast";
 import "./styles/main.css";
@@ -26,6 +27,7 @@ interface Page<T> {
 
 class SonusApp {
   private shell: AppShell;
+  private snow: SnowOverlay;
   private currentTracks: Track[] = [];
   private totalTracks: number = 0;
 
@@ -41,6 +43,12 @@ class SonusApp {
       onSeedBenchmark: () => this.handleSeedBenchmark(),
       onScanFolder: () => this.handleScanFolder(),
     });
+
+    this.snow = new SnowOverlay();
+  }
+
+  public getSnowOverlay(): SnowOverlay {
+    return this.snow;
   }
 
   public getLoadedTracks(): Track[] {
