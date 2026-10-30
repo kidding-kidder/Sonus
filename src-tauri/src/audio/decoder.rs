@@ -1,11 +1,12 @@
 use std::path::Path;
-use symphonia::core::audio::AudioBuffer;
+use symphonia::core::audio::{AudioBuffer, Signal};
 use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::{FormatOptions, FormatReader};
+use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use symphonia::core::units::Time;
 
 pub struct TrackDecoder {
     pub reader: Box<dyn FormatReader>,
@@ -13,6 +14,7 @@ pub struct TrackDecoder {
     pub track_id: u32,
     pub sample_rate: u32,
     pub channels: usize,
+    pub duration_ms: u64,
 }
 
 impl TrackDecoder {
@@ -40,6 +42,12 @@ impl TrackDecoder {
         let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
         let track_id = track.id;
 
+        let duration_ms = if let Some(n_frames) = track.codec_params.n_frames {
+            (n_frames * 1000) / (sample_rate as u64)
+        } else {
+            0
+        };
+
         let decoder = symphonia::default::get_codecs()
             .make(&track.codec_params, &decoder_opts)
             .map_err(|e| e.to_string())?;
@@ -50,25 +58,65 @@ impl TrackDecoder {
             track_id,
             sample_rate,
             channels,
+            duration_ms,
         })
     }
 
-    pub fn next_packet_samples(&mut self) -> Result<Option<AudioBuffer<f32>>, SymphoniaError> {
+    pub fn seek(&mut self, time_ms: u64) -> Result<(), String> {
+        let seconds = (time_ms / 1000) as u64;
+        let frac = (time_ms % 1000) as f64 / 1000.0;
+        let time = Time::from(seconds as f64 + frac);
+
+        self.reader
+            .seek(
+                SeekMode::Coarse,
+                SeekTo::Time {
+                    time,
+                    track_id: Some(self.track_id),
+                },
+            )
+            .map_err(|e| e.to_string())?;
+
+        self.decoder.reset();
+        Ok(())
+    }
+
+    pub fn decode_next_stereo_chunk(&mut self, out: &mut Vec<f32>) -> Result<bool, SymphoniaError> {
         let packet = match self.reader.next_packet() {
             Ok(p) => p,
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                return Ok(None);
+                return Ok(false);
             }
             Err(e) => return Err(e),
         };
 
         if packet.track_id() != self.track_id {
-            return Ok(None);
+            return Ok(true);
         }
 
         let decoded = self.decoder.decode(&packet)?;
         let mut sample_buf = AudioBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
         decoded.convert(&mut sample_buf);
-        Ok(Some(sample_buf))
+
+        let frames = sample_buf.frames();
+        let chan_count = sample_buf.spec().channels.count();
+
+        if chan_count == 1 {
+            // Mono to stereo duplicate
+            let mono = sample_buf.chan(0);
+            for &s in mono {
+                out.push(s);
+                out.push(s);
+            }
+        } else {
+            let left = sample_buf.chan(0);
+            let right = sample_buf.chan(1.min(chan_count - 1));
+            for i in 0..frames {
+                out.push(left[i]);
+                out.push(right[i]);
+            }
+        }
+
+        Ok(true)
     }
 }

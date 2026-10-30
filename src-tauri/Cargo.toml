@@ -17,6 +17,7 @@ cpal = "0.15"
 blake3 = "1.5"
 image = { version = "0.25", default-features = false, features = ["webp", "jpeg", "png"] }
 tokio = { version = "1", features = ["full"] }
+dirs = "5.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
