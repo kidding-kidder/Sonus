@@ -96,4 +96,7 @@ foreach ($c in $children2) {
     Stop-Process -Id $c.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
+Write-Output "=== 7. Cleanup Benchmark Tracks ==="
+python scripts/clean_benchmarks.py
+
 Write-Output "=== ALL VERIFICATION TESTS PASSED SUCCESSFULLY ==="
