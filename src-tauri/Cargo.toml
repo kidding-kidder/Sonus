@@ -1,6 +1,6 @@
 [package]
 name = "sonus"
-version = "0.1.6"
+version = "0.1.7"
 description = "Local-first desktop music player and downloader"
 edition = "2021"
 
@@ -24,6 +24,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 crossbeam-channel = "0.5"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+zip = { version = "9.4.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"

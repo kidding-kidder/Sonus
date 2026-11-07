@@ -67,3 +67,17 @@ pub fn clear_cancelled_or_failed_downloads(db: State<'_, DbPool>) -> Result<(), 
     let conn = db.lock().map_err(|e| e.to_string())?;
     queries::clear_cancelled_or_failed_downloads(&conn).map_err(|e| e.to_string())
 }
+
+#[command]
+pub fn check_download_tools() -> serde_json::Value {
+    serde_json::json!({
+        "ytdlp": crate::download::bootstrap::is_ytdlp_present(),
+        "ffmpeg": crate::download::bootstrap::is_ffmpeg_present(),
+        "ready": crate::download::bootstrap::are_tools_ready(),
+    })
+}
+
+#[command]
+pub async fn bootstrap_download_tools() -> Result<(), String> {
+    crate::download::bootstrap::ensure_tools_ready().await
+}

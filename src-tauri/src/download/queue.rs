@@ -92,6 +92,10 @@ async fn run_worker_loop(
             ));
             let _ = std::fs::create_dir_all(&job_dir);
 
+            if let Err(e) = super::bootstrap::ensure_tools_ready().await {
+                warn!("Tools not ready for download: {}", e);
+            }
+
             let raw_trimmed = item.url.trim();
             let trimmed_url = if raw_trimmed.starts_with("soundcloud.com")
                 || raw_trimmed.starts_with("www.soundcloud.com")

@@ -3,6 +3,7 @@ import { STRINGS } from "./strings";
 import { THEME_DEFAULT_ACCENTS } from "./settings_manager";
 import { EqPreset, SPOTIFY_EQ_PRESETS, matchEqPreset } from "./eq_presets";
 import { showChangelogModal } from "./changelog_modal";
+import { ToastManager } from "./toast";
 
 export interface SettingsState {
   libraryFolder: string;
@@ -239,6 +240,17 @@ export class SettingsView {
               </select>
             </div>
           </div>
+
+          <div style="display: flex; align-items: center; justify-content: space-between; padding-top: var(--space-3); border-top: 1px solid var(--color-border-subtle); margin-top: var(--space-1);">
+            <div>
+              <div style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text-primary);">Download Engine (yt-dlp & FFmpeg)</div>
+              <div style="font-size: var(--font-size-xs); color: var(--color-text-muted);">Required for downloading audio streams. Automatically provisioned by Sonus.</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span id="tools-status-badge" style="font-size: var(--font-size-xs); color: var(--color-text-muted); font-weight: 500;">Checking...</span>
+              <button id="btn-reinstall-tools" class="btn-secondary" style="font-size: var(--font-size-xs); padding: 4px 10px;">Download / Repair</button>
+            </div>
+          </div>
         </div>
 
         <!-- Updates Section -->
@@ -381,6 +393,41 @@ export class SettingsView {
     });
     const aotCb = this.container.querySelector<HTMLInputElement>("#toggle-mini-aot");
     aotCb?.addEventListener("change", () => this.callbacks.onUpdateSetting("mini_player_always_on_top", aotCb.checked ? "true" : "false"));
+
+    const toolsBadge = this.container.querySelector<HTMLElement>("#tools-status-badge");
+    const reinstallToolsBtn = this.container.querySelector<HTMLButtonElement>("#btn-reinstall-tools");
+
+    const refreshToolsStatus = async () => {
+      try {
+        const status = await api.checkDownloadTools();
+        if (status.ready) {
+          if (toolsBadge) toolsBadge.innerHTML = `<span style="color: #22c55e;">✓ Installed & Ready</span>`;
+        } else {
+          const missing: string[] = [];
+          if (!status.ytdlp) missing.push("yt-dlp");
+          if (!status.ffmpeg) missing.push("FFmpeg");
+          if (toolsBadge) toolsBadge.innerHTML = `<span style="color: #f59e0b;">Missing (${missing.join(", ")})</span>`;
+        }
+      } catch {
+        if (toolsBadge) toolsBadge.textContent = "Status unknown";
+      }
+    };
+
+    refreshToolsStatus();
+
+    reinstallToolsBtn?.addEventListener("click", async () => {
+      if (reinstallToolsBtn) reinstallToolsBtn.disabled = true;
+      if (toolsBadge) toolsBadge.innerHTML = `<span style="color: var(--color-accent);">Downloading tools...</span>`;
+      try {
+        await api.bootstrapDownloadTools();
+        ToastManager.get().success("Download tools ready!");
+      } catch (err) {
+        ToastManager.get().error(`Tool download error: ${String(err)}`);
+      } finally {
+        if (reinstallToolsBtn) reinstallToolsBtn.disabled = false;
+        refreshToolsStatus();
+      }
+    });
 
     api.getAppVersion().then(v => {
       const vEl = this.container.querySelector("#settings-current-version");

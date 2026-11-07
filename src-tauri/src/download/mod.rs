@@ -1,3 +1,4 @@
+pub mod bootstrap;
 pub mod matcher;
 pub mod queue;
 pub mod soundcloud;
@@ -6,6 +7,8 @@ pub mod ytdlp;
 
 use std::path::PathBuf;
 
+#[allow(unused_imports)]
+pub use bootstrap::{ensure_tools_ready, are_tools_ready};
 #[allow(unused_imports)]
 pub use queue::DownloadWorker;
 #[allow(unused_imports)]
@@ -17,6 +20,7 @@ pub use ytdlp::YtDlpEngine;
 
 pub fn candidate_bin_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
+    dirs.push(bootstrap::app_bin_dir());
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             dirs.push(exe_dir.join("resources").join("bin"));
@@ -33,6 +37,7 @@ pub fn candidate_bin_dirs() -> Vec<PathBuf> {
     if let Some(local) = dirs::data_local_dir() {
         dirs.push(local.join("Programs").join("Python").join("Python311").join("Scripts"));
         dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
+        dirs.push(local.join("Sonus").join("bin"));
     }
     dirs
 }

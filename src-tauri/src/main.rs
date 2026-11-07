@@ -322,6 +322,13 @@ fn main() {
                 }
                 window::optimizer::start_memory_trim_daemon();
 
+                // Silently bootstrap external download tools (yt-dlp, ffmpeg) in background if missing
+                tauri::async_runtime::spawn(async {
+                    if let Err(e) = download::ensure_tools_ready().await {
+                        tracing::warn!("Background tool bootstrap notice: {}", e);
+                    }
+                });
+
                 info!("Sonus Windows 11 backend initialized successfully.");
                 Ok(())
             }
@@ -381,6 +388,8 @@ fn main() {
             commands::download::clear_completed_downloads,
             commands::download::delete_download,
             commands::download::clear_cancelled_or_failed_downloads,
+            commands::download::check_download_tools,
+            commands::download::bootstrap_download_tools,
             // Window controls
             window_start_dragging,
             window_minimize,

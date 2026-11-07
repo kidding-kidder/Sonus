@@ -48,7 +48,9 @@ impl YtDlpEngine {
                 .to_string()
         };
 
-        let mut cmd = Command::new(&self.binary_path);
+        let _ = super::bootstrap::ensure_tools_ready().await;
+        let bin = super::resolve_tool_bin("yt-dlp");
+        let mut cmd = Command::new(if bin.exists() { &bin } else { &self.binary_path });
         super::inject_bundled_path(&mut cmd);
         cmd.current_dir(output_dir);
         #[cfg(target_os = "windows")]
@@ -199,7 +201,9 @@ impl YtDlpEngine {
     }
 
     pub async fn fetch_metadata_loose(&self, target: &str) -> Option<(String, String)> {
-        let mut cmd = Command::new(&self.binary_path);
+        let _ = super::bootstrap::ensure_tools_ready().await;
+        let bin = super::resolve_tool_bin("yt-dlp");
+        let mut cmd = Command::new(if bin.exists() { &bin } else { &self.binary_path });
         super::inject_bundled_path(&mut cmd);
         #[cfg(target_os = "windows")]
         cmd.creation_flags(0x08000000);

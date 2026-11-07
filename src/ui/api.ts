@@ -112,6 +112,10 @@ export const api = {
   clearCompletedDownloads: () => invoke<void>("clear_completed_downloads"),
   clearCancelledOrFailedDownloads: () =>
     invoke<void>("clear_cancelled_or_failed_downloads"),
+  checkDownloadTools: () =>
+    invoke<{ ytdlp: boolean; ffmpeg: boolean; ready: boolean }>("check_download_tools"),
+  bootstrapDownloadTools: () =>
+    invoke<void>("bootstrap_download_tools"),
 
   scanFolder: (folderPath: string) => invoke<number>("scan_library_folder", { folderPath }),
   seedBenchmark: (count: number) => invoke<number>("seed_tracks", { count }),

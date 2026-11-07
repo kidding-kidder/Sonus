@@ -10,9 +10,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.6",
+    version: "v0.1.7",
     date: "Latest Release",
     isLatest: true,
+    newFeatures: [
+      "Automatic Tool Provisioning: Sonus now automatically checks, downloads, and configures yt-dlp and FFmpeg on first launch or download so you never have to install external tools manually.",
+      "Download Engine Health Monitor: New status monitor in Settings showing yt-dlp & FFmpeg status with 1-click Download / Repair.",
+    ],
+    fixes: [
+      "Missing Tool Fix ('os error 2'): Completely eliminated missing binary crashes on fresh Windows PCs by managing dependencies in %LOCALAPPDATA%\\Sonus\\bin.",
+      "Dynamic Executable Resolution: The downloader now detects dynamically provisioned binaries in real time without requiring an app restart.",
+    ],
+  },
+  {
+    version: "v0.1.6",
+    date: "November 2026",
     newFeatures: [
       "Discord Rich Presence Download Button: Added interactive 'Download Sonus' button to your Discord activity that links straight to the latest GitHub release.",
     ],
