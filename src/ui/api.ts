@@ -307,6 +307,7 @@ export const api = {
   trimMemory: () => invoke<void>("trim_memory"),
 
   // Auto Updater APIs
+  getAppVersion: () => invoke<string>("get_app_version"),
   checkForUpdates: () => invoke<UpdateInfo | null>("check_for_updates"),
   applyUpdate: (downloadUrl: string) => invoke<void>("apply_update", { downloadUrl }),
 };

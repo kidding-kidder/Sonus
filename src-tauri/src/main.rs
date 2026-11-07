@@ -406,6 +406,7 @@ fn main() {
             commands::finder::cleanup_preview_temp,
             commands::finder::open_in_browser,
             // Auto updater commands
+            commands::updater::get_app_version,
             commands::updater::check_for_updates,
             commands::updater::apply_update,
         ])

@@ -73,6 +73,11 @@ pub fn cleanup_old_binary() {
 }
 
 #[tauri::command]
+pub fn get_app_version() -> String {
+    format!("v{}", CURRENT_VERSION)
+}
+
+#[tauri::command]
 pub async fn check_for_updates() -> Result<Option<UpdateInfo>, String> {
     cleanup_old_binary();
 
@@ -266,14 +271,9 @@ pub async fn apply_update(
         return Err(format!("Failed to install new executable: {}", e));
     }
 
-    info!("Update successfully placed at {:?}. Spawning new process...", current_exe);
+    info!("Update successfully installed to {:?}. Closing app cleanly...", current_exe);
 
-    // 4. Launch new sonus.exe
-    std::process::Command::new(&current_exe)
-        .spawn()
-        .map_err(|e| format!("Failed to launch updated binary: {}", e))?;
-
-    // 5. Exit this process cleanly
+    // Cleanly exit the app so the user can open the updated Sonus without duplicate instances
     app.exit(0);
     std::process::exit(0);
 }

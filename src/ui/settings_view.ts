@@ -246,7 +246,7 @@ export class SettingsView {
             <div>
               <h3 style="font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);">App Updates</h3>
               <p style="font-size: var(--font-size-sm); color: var(--color-text-muted); margin-top: 2px;">
-                Current Version: <span style="font-weight: 600; color: var(--color-text-primary);">v0.1.0</span> • GitHub: <span style="color: var(--color-accent);">kidding-kidder/Sonus</span>
+                Current Version: <span id="settings-current-version" style="font-weight: 600; color: var(--color-text-primary);">...</span> • GitHub: <span style="color: var(--color-accent);">kidding-kidder/Sonus</span>
               </p>
             </div>
             <div style="display: flex; align-items: center; gap: var(--space-3);">
@@ -374,6 +374,11 @@ export class SettingsView {
     });
     const aotCb = this.container.querySelector<HTMLInputElement>("#toggle-mini-aot");
     aotCb?.addEventListener("change", () => this.callbacks.onUpdateSetting("mini_player_always_on_top", aotCb.checked ? "true" : "false"));
+
+    api.getAppVersion().then(v => {
+      const vEl = this.container.querySelector("#settings-current-version");
+      if (vEl) vEl.textContent = v;
+    }).catch(() => {});
 
     const checkBtn = this.container.querySelector<HTMLButtonElement>("#btn-manual-check-update");
     const statusMsg = this.container.querySelector<HTMLElement>("#update-status-msg");
