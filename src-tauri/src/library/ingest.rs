@@ -86,6 +86,40 @@ pub fn ingest_file<P: AsRef<Path>>(path: P) -> Result<IngestResult, String> {
         }
     }
 
+    if cover_bytes.is_none() {
+        for ext in &["jpg", "jpeg", "png", "webp"] {
+            let sidecar = p.with_extension(ext);
+            if sidecar.exists() {
+                cover_bytes = std::fs::read(&sidecar).ok();
+                break;
+            }
+        }
+        if cover_bytes.is_none() {
+            if let Some(parent) = p.parent() {
+                for name in &["cover.jpg", "folder.jpg", "cover.png", "folder.png", "artwork.jpg"] {
+                    let folder_art = parent.join(name);
+                    if folder_art.exists() {
+                        cover_bytes = std::fs::read(&folder_art).ok();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if artist == "Unknown Artist" && file_stem.contains(" - ") {
+        let mut clean_stem = file_stem.trim();
+        if let Some(idx) = clean_stem.find(" - ") {
+            if clean_stem[..idx].trim().chars().all(|c| c.is_ascii_digit()) {
+                clean_stem = clean_stem[idx + 3..].trim();
+            }
+        }
+        if let Some(idx) = clean_stem.find(" - ") {
+            artist = clean_stem[..idx].trim().to_string();
+            title = clean_stem[idx + 3..].trim().to_string();
+        }
+    }
+
     let norm_key = compute_norm_key(&artist, &title, duration_ms);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
 
@@ -111,7 +145,54 @@ pub fn ingest_file<P: AsRef<Path>>(path: P) -> Result<IngestResult, String> {
         is_liked: false,
         norm_key,
         file_hash,
+        speed: None,
     };
 
     Ok(IngestResult { track, cover_bytes })
+}
+
+pub fn extract_cover_bytes<P: AsRef<Path>>(path: P) -> Option<Vec<u8>> {
+    let p = path.as_ref();
+    for ext in &["jpg", "jpeg", "png", "webp"] {
+        let sidecar = p.with_extension(ext);
+        if sidecar.exists() {
+            if let Ok(bytes) = std::fs::read(&sidecar) {
+                return Some(bytes);
+            }
+        }
+    }
+    if let Ok(file) = File::open(p) {
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("mp3").to_ascii_lowercase();
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+        let mut hint = Hint::new();
+        hint.with_extension(&ext);
+        if let Ok(mut probed) = symphonia::default::get_probe().format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        ) {
+            if let Some(meta) = probed.format.metadata().current() {
+                if let Some(v) = meta.visuals().first() {
+                    return Some(v.data.to_vec());
+                }
+            }
+            if let Some(meta) = probed.metadata.get().as_ref().and_then(|m| m.current()) {
+                if let Some(v) = meta.visuals().first() {
+                    return Some(v.data.to_vec());
+                }
+            }
+        }
+    }
+    if let Some(parent) = p.parent() {
+        for name in &["cover.jpg", "folder.jpg", "cover.png", "folder.png", "artwork.jpg"] {
+            let folder_art = parent.join(name);
+            if folder_art.exists() {
+                if let Ok(bytes) = std::fs::read(&folder_art) {
+                    return Some(bytes);
+                }
+            }
+        }
+    }
+    None
 }

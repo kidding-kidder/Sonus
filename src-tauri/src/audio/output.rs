@@ -11,7 +11,7 @@ pub struct AudioOutput {
 
 impl AudioOutput {
     pub fn try_create(
-        rx: Receiver<f32>,
+        rx: Receiver<[f32; 2]>,
     ) -> Result<(Self, u32), String> {
         let host = cpal::default_host();
         let device = host
@@ -35,75 +35,113 @@ impl AudioOutput {
         };
 
         let stream = match device.default_output_config().map_err(|e| e.to_string())?.sample_format() {
-            SampleFormat::F32 => device.build_output_stream(
-                &config,
-                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    if ch == 2 {
-                        for sample in data.iter_mut() {
-                            *sample = rx.try_recv().unwrap_or(0.0);
+            SampleFormat::F32 => {
+                let mut last_l = 0.0f32;
+                let mut last_r = 0.0f32;
+                device.build_output_stream(
+                    &config,
+                    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                        let pull_next = |rx: &Receiver<[f32; 2]>, ll: &mut f32, lr: &mut f32| -> [f32; 2] {
+                            match rx.try_recv() {
+                                Ok(f) => { *ll = f[0]; *lr = f[1]; f },
+                                Err(_) => {
+                                    *ll *= 0.88; *lr *= 0.88;
+                                    if ll.abs() < 1e-4 { *ll = 0.0; }
+                                    if lr.abs() < 1e-4 { *lr = 0.0; }
+                                    [*ll, *lr]
+                                }
+                            }
+                        };
+                        if ch == 2 {
+                            for frame in data.chunks_exact_mut(2) {
+                                let [l, r] = pull_next(&rx, &mut last_l, &mut last_r);
+                                frame[0] = l;
+                                frame[1] = r;
+                            }
+                        } else if ch == 1 {
+                            for sample in data.iter_mut() {
+                                let [l, r] = pull_next(&rx, &mut last_l, &mut last_r);
+                                *sample = (l + r) * 0.5;
+                            }
+                        } else {
+                            for frame in data.chunks_exact_mut(ch) {
+                                let [l, r] = pull_next(&rx, &mut last_l, &mut last_r);
+                                frame[0] = l;
+                                frame[1] = r;
+                                for extra in &mut frame[2..] { *extra = 0.0; }
+                            }
                         }
-                    } else if ch == 1 {
-                        for sample in data.iter_mut() {
-                            let l = rx.try_recv().unwrap_or(0.0);
-                            let r = rx.try_recv().unwrap_or(0.0);
-                            *sample = (l + r) * 0.5;
+                    },
+                    err_fn,
+                    None,
+                )
+            }
+            SampleFormat::I16 => {
+                let mut last_l = 0.0f32;
+                let mut last_r = 0.0f32;
+                device.build_output_stream(
+                    &config,
+                    move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                        let pull_next = |rx: &Receiver<[f32; 2]>, ll: &mut f32, lr: &mut f32| -> [f32; 2] {
+                            match rx.try_recv() {
+                                Ok(f) => { *ll = f[0]; *lr = f[1]; f },
+                                Err(_) => {
+                                    *ll *= 0.88; *lr *= 0.88;
+                                    if ll.abs() < 1e-4 { *ll = 0.0; }
+                                    if lr.abs() < 1e-4 { *lr = 0.0; }
+                                    [*ll, *lr]
+                                }
+                            }
+                        };
+                        if ch == 2 {
+                            for frame in data.chunks_exact_mut(2) {
+                                let [l, r] = pull_next(&rx, &mut last_l, &mut last_r);
+                                frame[0] = (l.clamp(-1.0, 1.0) * 32767.0) as i16;
+                                frame[1] = (r.clamp(-1.0, 1.0) * 32767.0) as i16;
+                            }
+                        } else if ch == 1 {
+                            for sample in data.iter_mut() {
+                                let [l, r] = pull_next(&rx, &mut last_l, &mut last_r);
+                                *sample = (((l + r) * 0.5).clamp(-1.0, 1.0) * 32767.0) as i16;
+                            }
+                        } else {
+                            for frame in data.chunks_exact_mut(ch) {
+                                let [l, r] = pull_next(&rx, &mut last_l, &mut last_r);
+                                frame[0] = (l.clamp(-1.0, 1.0) * 32767.0) as i16;
+                                if ch > 1 { frame[1] = (r.clamp(-1.0, 1.0) * 32767.0) as i16; }
+                                for extra in &mut frame[2..] { *extra = 0; }
+                            }
                         }
-                    } else if ch > 2 {
+                    },
+                    err_fn,
+                    None,
+                )
+            }
+            SampleFormat::U16 => {
+                let mut last_l = 0.0f32;
+                let mut last_r = 0.0f32;
+                device.build_output_stream(
+                    &config,
+                    move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
                         for frame in data.chunks_exact_mut(ch) {
-                            frame[0] = rx.try_recv().unwrap_or(0.0);
-                            frame[1] = rx.try_recv().unwrap_or(0.0);
-                            for extra in &mut frame[2..] {
-                                *extra = 0.0;
-                            }
+                            let [l, r] = match rx.try_recv() {
+                                Ok(f) => { last_l = f[0]; last_r = f[1]; f },
+                                Err(_) => {
+                                    last_l *= 0.88; last_r *= 0.88;
+                                    if last_l.abs() < 1e-4 { last_l = 0.0; }
+                                    if last_r.abs() < 1e-4 { last_r = 0.0; }
+                                    [last_l, last_r]
+                                }
+                            };
+                            frame[0] = ((l.clamp(-1.0, 1.0) * 0.5 + 0.5) * 65535.0) as u16;
+                            if ch > 1 { frame[1] = ((r.clamp(-1.0, 1.0) * 0.5 + 0.5) * 65535.0) as u16; }
+                            for extra in &mut frame[2..] { *extra = 32768; }
                         }
-                    }
-                },
-                err_fn,
-                None,
-            ),
-            SampleFormat::I16 => device.build_output_stream(
-                &config,
-                move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    if ch == 2 {
-                        for sample in data.iter_mut() {
-                            let f = rx.try_recv().unwrap_or(0.0).clamp(-1.0, 1.0);
-                            *sample = (f * 32767.0) as i16;
-                        }
-                    } else {
-                        for frame in data.chunks_exact_mut(ch) {
-                            let l = rx.try_recv().unwrap_or(0.0).clamp(-1.0, 1.0);
-                            let r = rx.try_recv().unwrap_or(0.0).clamp(-1.0, 1.0);
-                            frame[0] = (l * 32767.0) as i16;
-                            if ch > 1 {
-                                frame[1] = (r * 32767.0) as i16;
-                            }
-                            for extra in &mut frame[2..] {
-                                *extra = 0;
-                            }
-                        }
-                    }
-                },
-                err_fn,
-                None,
-            ),
-            SampleFormat::U16 => device.build_output_stream(
-                &config,
-                move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
-                    for frame in data.chunks_exact_mut(ch) {
-                        let l = rx.try_recv().unwrap_or(0.0).clamp(-1.0, 1.0);
-                        let r = rx.try_recv().unwrap_or(0.0).clamp(-1.0, 1.0);
-                        frame[0] = ((l * 0.5 + 0.5) * 65535.0) as u16;
-                        if ch > 1 {
-                            frame[1] = ((r * 0.5 + 0.5) * 65535.0) as u16;
-                        }
-                        for extra in &mut frame[2..] {
-                            *extra = 32768;
-                        }
-                    }
-                },
-                err_fn,
-                None,
-            ),
+                    },
+                    err_fn,
+                    None,
+                )
+            }
             _ => return Err("Unsupported hardware sample format".to_string()),
         }
         .map_err(|e| format!("Failed to build CPAL output stream: {}", e))?;

@@ -31,6 +31,15 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         info!("Applied database migration v1");
     }
 
+    if current_version < 2 {
+        let tx = conn.transaction()?;
+        let _ = tx.execute("ALTER TABLE playlist_tracks ADD COLUMN speed REAL NOT NULL DEFAULT 1.0", []);
+        let now = current_timestamp();
+        tx.execute("INSERT OR REPLACE INTO _migrations (version, applied_at) VALUES (2, ?1)", [now])?;
+        tx.commit()?;
+        info!("Applied database migration v2: added speed to playlist_tracks");
+    }
+
     Ok(())
 }
 

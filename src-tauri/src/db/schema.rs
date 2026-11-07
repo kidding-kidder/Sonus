@@ -1,7 +1,7 @@
 pub const PRAGMA_WAL: &str = "PRAGMA journal_mode = WAL;";
 pub const PRAGMA_BUSY_TIMEOUT: &str = "PRAGMA busy_timeout = 5000;";
 pub const PRAGMA_FOREIGN_KEYS: &str = "PRAGMA foreign_keys = ON;";
-pub const PRAGMA_CACHE_SIZE: &str = "PRAGMA cache_size = -8000;";
+pub const PRAGMA_CACHE_SIZE: &str = "PRAGMA cache_size = -1000;";
 pub const PRAGMA_SYNCHRONOUS: &str = "PRAGMA synchronous = NORMAL;";
 
 pub const CREATE_MIGRATIONS_TABLE: &str = r#"

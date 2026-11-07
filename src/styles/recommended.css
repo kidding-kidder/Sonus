@@ -1,0 +1,203 @@
+/* Spotify-style Recommended Songs Section */
+.recommended-section {
+  padding: 32px 24px 64px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 100%);
+  user-select: none;
+}
+
+.recommended-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+.recommended-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recommended-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary, #ffffff);
+  margin: 0;
+}
+
+.recommended-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary, #b3b3b3);
+  margin: 0;
+}
+
+.btn-rec-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 18px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--color-bg-elevated, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-primary, #ffffff);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-rec-refresh:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.12);
+  transform: scale(1.03);
+}
+
+.btn-rec-refresh:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-rec-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-rec-refresh.refreshing .rec-refresh-icon {
+  animation: rec-spin 0.8s linear infinite;
+}
+
+@keyframes rec-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.recommended-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recommended-row {
+  display: grid;
+  grid-template-columns: 44px 44px 2.5fr 1.8fr 110px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 6px);
+  transition: background-color 0.15s ease;
+}
+
+.recommended-row:hover {
+  background-color: var(--color-bg-elevated, rgba(255, 255, 255, 0.08));
+}
+
+.rec-play-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rec-play-btn:hover {
+  background: var(--color-accent, #1ed760);
+  color: #000000;
+  transform: scale(1.08);
+}
+
+.rec-play-btn.playing {
+  background: var(--color-accent, #1ed760);
+  color: #000000;
+}
+
+.rec-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-xs, 4px);
+  object-fit: cover;
+  background-color: var(--color-bg-elevated, #282828);
+}
+
+.rec-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  gap: 2px;
+}
+
+.rec-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary, #ffffff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rec-artist {
+  font-size: 12px;
+  color: var(--color-text-secondary, #b3b3b3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rec-album {
+  font-size: 13px;
+  color: var(--color-text-muted, #727272);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rec-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.rec-add-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: var(--color-text-primary, #ffffff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.rec-add-btn:hover:not(:disabled) {
+  border-color: #ffffff;
+  transform: scale(1.04);
+}
+
+.rec-add-btn.added {
+  border-color: var(--color-accent, #1ed760);
+  background: rgba(30, 215, 96, 0.12);
+  color: var(--color-accent, #1ed760);
+  cursor: default;
+}
+
+.rec-skeleton {
+  height: 56px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  animation: rec-pulse 1.4s infinite ease-in-out;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}

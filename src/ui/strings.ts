@@ -6,12 +6,15 @@ export const STRINGS = {
   },
   nav: {
     home: "Home",
-    allSongs: "All Songs",
+    allSongs: "Downloaded Songs",
+    finder: "Song Finder",
     liked: "Liked Songs",
     playlists: "Playlists",
+    library: "Library",
     downloads: "Downloads",
     settings: "Settings",
     newPlaylist: "New Playlist",
+    chatbot: "AI Chat",
   },
   search: {
     placeholder: "Search tracks, artists, albums (Ctrl+F)...",

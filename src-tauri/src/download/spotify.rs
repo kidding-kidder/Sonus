@@ -1,97 +1,106 @@
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::Duration;
-use tokio::process::Command;
-use tokio::time::timeout;
-use tracing::info;
 
-pub struct SpotDlEngine {
-    binary_path: PathBuf,
+#[derive(Debug, Clone)]
+pub enum SpotifyItem {
+    Track { artist: String, title: String },
+    Playlist { name: String, tracks: Vec<(String, String)> },
+    Album { name: String, tracks: Vec<(String, String)> },
 }
 
-impl SpotDlEngine {
-    pub fn new() -> Self {
-        let home_bin = dirs::home_dir().map(|h| h.join("bin").join("spotdl.exe"));
-        let python_scripts = dirs::data_local_dir().map(|d| {
-            d.join("Programs")
-                .join("Python")
-                .join("Python311")
-                .join("Scripts")
-                .join("spotdl.exe")
-        });
-
-        let binary_path = home_bin
-            .filter(|p| p.exists())
-            .or_else(|| python_scripts.filter(|p| p.exists()))
-            .unwrap_or_else(|| PathBuf::from("spotdl"));
-
-        Self { binary_path }
-    }
-
-    pub async fn download_audio(
-        &self,
-        url: &str,
-        output_dir: &Path,
-    ) -> Result<Vec<PathBuf>, String> {
-        info!("Starting spotdl download: {} -> {:?}", url, output_dir);
-
-        let out_dir_str = output_dir.to_string_lossy().to_string();
-
-        let mut cmd = Command::new(&self.binary_path);
-        cmd.args([
-            "download",
-            url,
-            "--output",
-            &out_dir_str,
-            "--format",
-            "mp3",
-            "--threads",
-            "4",
-            "--print-errors",
-        ]);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-        let download_future = async {
-            let child = cmd.spawn().map_err(|e| format!("Failed to spawn spotdl: {}", e))?;
-            let output = child.wait_with_output().await.map_err(|e| e.to_string())?;
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-
-            let produced_files = collect_audio_files(output_dir);
-            if !produced_files.is_empty() {
-                return Ok(produced_files);
-            }
-
-            if !output.status.success() {
-                return Err(format!(
-                    "spotdl failed (exit code {:?}): {} {}",
-                    output.status.code(),
-                    stderr,
-                    stdout
-                ));
-            }
-
-            Ok(produced_files)
-        };
-
-        match timeout(Duration::from_secs(600), download_future).await {
-            Ok(Ok(files)) => {
-                if files.is_empty() {
-                    Err("spotdl finished but no audio files were produced".to_string())
-                } else {
-                    Ok(files)
-                }
-            }
-            Ok(Err(e)) => Err(e),
-            Err(_) => {
-                let partial = collect_audio_files(output_dir);
-                if !partial.is_empty() {
-                    Ok(partial)
-                } else {
-                    Err("spotdl download timed out after 600 seconds".to_string())
-                }
+pub fn extract_spotify_type_and_id(url: &str) -> Option<(String, String)> {
+    let clean = url.split('?').next().unwrap_or(url).split('#').next().unwrap_or(url);
+    for t in &["playlist", "album", "track"] {
+        let pattern_slash = format!("/{}/", t);
+        if let Some(pos) = clean.find(&pattern_slash) {
+            let rest = &clean[pos + pattern_slash.len()..];
+            let id = rest.split('/').next()?.trim();
+            if !id.is_empty() {
+                return Some((t.to_string(), id.to_string()));
             }
         }
+        let pattern_colon = format!(":{}:", t);
+        if let Some(pos) = clean.find(&pattern_colon) {
+            let rest = &clean[pos + pattern_colon.len()..];
+            let id = rest.split(':').next()?.trim();
+            if !id.is_empty() {
+                return Some((t.to_string(), id.to_string()));
+            }
+        }
+    }
+    None
+}
+
+pub fn fetch_spotify_meta(url: &str) -> Option<SpotifyItem> {
+    let (item_type, id) = extract_spotify_type_and_id(url)?;
+    let embed_url = format!("https://open.spotify.com/embed/{}/{}", item_type, id);
+
+    let mut cmd = std::process::Command::new("curl.exe");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let output = cmd
+        .args(["-s", "-L", "--max-time", "12", &embed_url])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let html = String::from_utf8_lossy(&output.stdout);
+    let start_tag = "<script id=\"__NEXT_DATA__\" type=\"application/json\">";
+    let start = html.find(start_tag)?;
+    let rest = &html[start + start_tag.len()..];
+    let end = rest.find("</script>")?;
+    let json_str = &rest[..end];
+
+    let v: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let entity = &v["props"]["pageProps"]["state"]["data"]["entity"];
+
+    match item_type.as_str() {
+        "track" => {
+            let title = entity.get("name").or_else(|| entity.get("title"))?.as_str()?.replace('\u{a0}', " ").trim().to_string();
+            let artist = entity.get("artists")
+                .and_then(|a| a.get(0))
+                .and_then(|a| a.get("name"))
+                .or_else(|| entity.get("subtitle"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("Unknown Artist")
+                .replace('\u{a0}', " ")
+                .trim()
+                .to_string();
+            Some(SpotifyItem::Track { artist, title })
+        }
+        "playlist" | "album" => {
+            let name = entity.get("name").or_else(|| entity.get("title")).and_then(|s| s.as_str()).unwrap_or("Spotify Playlist").replace('\u{a0}', " ").trim().to_string();
+            let mut tracks = Vec::new();
+            if let Some(list) = entity.get("trackList").and_then(|l| l.as_array()) {
+                for item in list {
+                    let title = item.get("title").or_else(|| item.get("name")).and_then(|t| t.as_str()).unwrap_or_default().replace('\u{a0}', " ").trim().to_string();
+                    let artist = item.get("subtitle").and_then(|s| s.as_str()).unwrap_or("Unknown Artist").replace('\u{a0}', " ").trim().to_string();
+                    if !title.is_empty() {
+                        tracks.push((artist, title));
+                    }
+                }
+            }
+            if item_type == "playlist" {
+                Some(SpotifyItem::Playlist { name, tracks })
+            } else {
+                Some(SpotifyItem::Album { name, tracks })
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn fetch_spotify_title(url: &str) -> Option<String> {
+    match fetch_spotify_meta(url) {
+        Some(SpotifyItem::Track { artist, title }) => Some(format!("{} - {}", artist, title)),
+        Some(SpotifyItem::Playlist { name, .. }) | Some(SpotifyItem::Album { name, .. }) => Some(name),
+        None => None,
     }
 }
 

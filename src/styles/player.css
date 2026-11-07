@@ -5,11 +5,13 @@
   background-color: var(--color-bg-surface);
   border-top: var(--border-width-hairline) solid var(--color-border);
   display: grid;
-  grid-template-columns: 280px 1fr 260px;
+  grid-template-columns: minmax(130px, 1.2fr) minmax(200px, 2fr) minmax(120px, 1.2fr);
   align-items: center;
   padding: 0 var(--space-4);
-  gap: var(--space-4);
+  gap: var(--space-3);
   z-index: 100;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .track-info {
@@ -17,6 +19,7 @@
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
+  overflow: hidden;
 }
 
 .track-cover-thumb {
@@ -30,12 +33,25 @@
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.track-cover-thumb:hover {
+  transform: scale(1.04);
 }
 
 .track-metadata {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  cursor: pointer;
+  overflow: hidden;
+  flex: 1;
+}
+
+.track-metadata:hover .track-title {
+  text-decoration: underline;
 }
 
 .track-title {
@@ -45,6 +61,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .track-artist {
@@ -53,12 +70,15 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .playback-controls {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-width: 0;
+  width: 100%;
   gap: var(--space-1);
 }
 
@@ -90,29 +110,38 @@
 }
 
 .control-btn .icon,
-.control-btn svg {
+.control-btn > svg {
   width: 16px;
   height: 16px;
   display: block;
+  pointer-events: none;
+}
+
+.control-btn rect,
+.control-btn path,
+.control-btn polygon {
+  width: auto;
+  height: auto;
 }
 
 .control-btn.play-btn {
   width: 34px;
   height: 34px;
   border-radius: var(--radius-full);
-  background-color: var(--color-text-primary);
-  color: var(--color-bg-base);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 .control-btn.play-btn:hover {
-  background-color: #ffffff;
-  color: var(--color-bg-base);
-  transform: scale(1.04);
+  background-color: var(--color-accent-hover);
+  color: var(--color-accent-text);
+  transform: scale(1.06);
 }
 
 .control-btn.play-btn .icon,
-.control-btn.play-btn svg {
+.control-btn.play-btn > svg,
+.control-btn.play-btn .icon svg {
   width: 16px;
   height: 16px;
   fill: currentColor;
@@ -138,23 +167,61 @@
 
 .progress-bar-container {
   flex: 1;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+
+.progress-bar-track {
+  width: 100%;
   height: 4px;
   background-color: var(--color-bg-active);
   border-radius: var(--radius-full);
   position: relative;
-  cursor: pointer;
+  overflow: visible;
+  transition: height 0.15s ease;
 }
 
-.progress-bar-container:hover {
+.progress-bar-container:hover .progress-bar-track,
+.progress-bar-container.is-dragging .progress-bar-track {
   height: 6px;
 }
 
 .progress-bar-fill {
   height: 100%;
   width: 0%;
-  background-color: var(--color-text-primary);
+  background-color: var(--color-accent);
   border-radius: var(--radius-full);
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+
+.progress-bar-container:hover .progress-bar-fill,
+.progress-bar-container.is-dragging .progress-bar-fill {
+  background-color: var(--color-accent-hover);
+}
+
+.progress-bar-thumb {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%) scale(0);
+  width: 12px;
+  height: 12px;
+  background-color: #ffffff;
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease;
   pointer-events: none;
+}
+
+.progress-bar-container:hover .progress-bar-thumb,
+.progress-bar-container.is-dragging .progress-bar-thumb {
+  transform: translateY(-50%) scale(1);
 }
 
 .secondary-controls {
@@ -162,6 +229,8 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-3);
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .volume-slider-container {
@@ -205,4 +274,61 @@
   background: var(--color-text-primary);
   cursor: pointer;
   border: none;
+}
+
+@media (max-width: 860px) {
+  .now-playing-bar {
+    grid-template-columns: minmax(110px, 1fr) minmax(180px, 1.8fr) auto;
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
+  }
+  .volume-slider-container {
+    width: 80px;
+  }
+  .volume-range {
+    width: 55px;
+  }
+  #volume-val {
+    display: none;
+  }
+  .scrubber-row {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 720px) {
+  .now-playing-bar {
+    grid-template-columns: minmax(90px, 1fr) minmax(160px, 1.6fr) auto;
+    gap: 4px;
+    padding: 0 6px;
+  }
+  .track-cover-thumb {
+    width: 36px;
+    height: 36px;
+  }
+  .secondary-controls [title*="Song speed"] {
+    display: none !important;
+  }
+  .volume-slider-container {
+    width: 65px;
+  }
+  .volume-range {
+    width: 42px;
+  }
+  .transport-buttons {
+    gap: 4px;
+  }
+}
+
+@media (max-width: 580px) {
+  .now-playing-bar {
+    grid-template-columns: minmax(70px, 0.8fr) minmax(140px, 1.8fr) auto;
+    gap: 2px;
+  }
+  .volume-slider-container {
+    display: none !important;
+  }
+  #btn-shuffle, #btn-repeat {
+    display: none !important;
+  }
 }

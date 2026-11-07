@@ -58,6 +58,8 @@ pub struct Track {
     pub is_liked: bool,
     pub norm_key: String,
     pub file_hash: String,
+    #[serde(default)]
+    pub speed: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

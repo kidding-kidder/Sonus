@@ -16,20 +16,39 @@
         "title": "Sonus",
         "width": 1100,
         "height": 720,
-        "minWidth": 800,
-        "minHeight": 550,
+        "minWidth": 620,
+        "minHeight": 440,
         "resizable": true,
         "decorations": false,
-        "transparent": false
+        "transparent": false,
+        "maximized": true
+      },
+      {
+        "label": "mini-player",
+        "title": "Sonus Mini Player",
+        "url": "mini.html",
+        "width": 348,
+        "height": 136,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost data: blob:; media-src 'self' asset: https://asset.localhost blob:; connect-src 'self' ipc:"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost data: blob: https: http:; media-src 'self' asset: https://asset.localhost data: blob: https: http:; connect-src 'self' ipc: https: http:;"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
+    "resources": [
+      "resources/bin/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

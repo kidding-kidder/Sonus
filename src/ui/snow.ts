@@ -13,11 +13,12 @@ export class SnowOverlay {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D | null;
   private flakes: Snowflake[] = [];
-  private animationFrameId: number | null = null;
   private isRunning: boolean = false;
+  private enabled: boolean = true;
   private width: number = 0;
   private height: number = 0;
-  private readonly flakeCount: number = 45;
+  private readonly flakeCount: number = 24;
+  private timerId: number | null = null;
 
   constructor() {
     this.canvas = document.createElement("canvas");
@@ -30,8 +31,10 @@ export class SnowOverlay {
     this.canvas.style.pointerEvents = "none";
     this.canvas.style.zIndex = "5";
     this.canvas.style.opacity = "0.75";
+    this.canvas.style.transform = "translateZ(0)";
+    this.canvas.style.willChange = "transform";
 
-    this.ctx = this.canvas.getContext("2d", { alpha: true });
+    this.ctx = this.canvas.getContext("2d", { alpha: true, desynchronized: true });
     document.body.appendChild(this.canvas);
 
     this.handleResize();
@@ -73,51 +76,61 @@ export class SnowOverlay {
       this.handleResize();
     });
 
-    // Zero-overhead backgrounding: pause when window or tab is hidden
+    // Zero-overhead backgrounding: pause when window is hidden or blurred
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        this.stop();
-      } else {
-        this.start();
-      }
+      if (document.hidden) this.stop();
+      else this.start();
     });
+    window.addEventListener("blur", () => this.stop());
+    window.addEventListener("focus", () => this.start());
+  }
+
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    this.canvas.style.display = enabled ? "block" : "none";
+    if (enabled) this.start();
+    else this.stop();
   }
 
   public start(): void {
-    if (this.isRunning) return;
+    if (!this.enabled || this.isRunning) return;
     this.isRunning = true;
-    this.loop();
+    this.tick();
   }
 
   public stop(): void {
     this.isRunning = false;
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
+    if (this.timerId !== null) {
+      window.clearTimeout(this.timerId);
+      this.timerId = null;
     }
     if (this.ctx) {
       this.ctx.clearRect(0, 0, this.width, this.height);
     }
   }
 
-  private loop = (): void => {
+  private tick = (): void => {
     if (!this.isRunning) return;
     this.render();
-    this.animationFrameId = requestAnimationFrame(this.loop);
+    // 20 FPS timer (50ms interval) completely eliminates rAF loop on 144Hz/240Hz monitors
+    this.timerId = window.setTimeout(this.tick, 50);
   };
 
   private render(): void {
     if (!this.ctx) return;
 
     this.ctx.clearRect(0, 0, this.width, this.height);
+    this.ctx.fillStyle = "rgba(224, 242, 254, 0.42)";
+    this.ctx.beginPath();
 
-    for (let i = 0; i < this.flakes.length; i++) {
+    const len = this.flakes.length;
+    for (let i = 0; i < len; i++) {
       const flake = this.flakes[i];
       if (!flake) continue;
 
       flake.swayAngle += flake.swaySpeed;
       flake.y += flake.speedY;
-      flake.x += flake.speedX + Math.sin(flake.swayAngle) * 0.5;
+      flake.x += flake.speedX;
 
       // Wrap around boundaries
       if (flake.y > this.height) {
@@ -130,11 +143,9 @@ export class SnowOverlay {
         flake.x = this.width + 5;
       }
 
-      // Draw crisp, elegant snowflake particle
-      this.ctx.beginPath();
-      this.ctx.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2);
-      this.ctx.fillStyle = `rgba(224, 242, 254, ${flake.opacity})`;
-      this.ctx.fill();
+      this.ctx.moveTo(flake.x + flake.radius, flake.y);
+      this.ctx.arc(flake.x, flake.y, flake.radius, 0, 6.2831853);
     }
+    this.ctx.fill();
   }
 }

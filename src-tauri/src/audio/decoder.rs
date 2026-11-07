@@ -15,11 +15,26 @@ pub struct TrackDecoder {
     pub sample_rate: u32,
     pub channels: usize,
     pub duration_ms: u64,
+    sample_buf: Option<AudioBuffer<f32>>,
 }
 
 impl TrackDecoder {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, String> {
-        let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        let file = {
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::OpenOptionsExt;
+                std::fs::OpenOptions::new()
+                    .read(true)
+                    .share_mode(7)
+                    .open(&path)
+                    .map_err(|e| e.to_string())?
+            }
+            #[cfg(not(windows))]
+            {
+                std::fs::File::open(&path).map_err(|e| e.to_string())?
+            }
+        };
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
         let hint = Hint::new();
@@ -59,23 +74,30 @@ impl TrackDecoder {
             sample_rate,
             channels,
             duration_ms,
+            sample_buf: None,
         })
     }
 
     pub fn seek(&mut self, time_ms: u64) -> Result<(), String> {
-        let seconds = (time_ms / 1000) as u64;
+        let seconds = time_ms / 1000;
         let frac = (time_ms % 1000) as f64 / 1000.0;
-        let time = Time::from(seconds as f64 + frac);
+        let time = Time::new(seconds, frac);
+        let target = SeekTo::Time {
+            time,
+            track_id: Some(self.track_id),
+        };
 
-        self.reader
-            .seek(
-                SeekMode::Coarse,
-                SeekTo::Time {
-                    time,
-                    track_id: Some(self.track_id),
-                },
-            )
-            .map_err(|e| e.to_string())?;
+        if self.reader.seek(SeekMode::Accurate, target).is_err() {
+            self.reader
+                .seek(
+                    SeekMode::Coarse,
+                    SeekTo::Time {
+                        time,
+                        track_id: Some(self.track_id),
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+        }
 
         self.decoder.reset();
         Ok(())
@@ -95,16 +117,27 @@ impl TrackDecoder {
         }
 
         let decoded = self.decoder.decode(&packet)?;
-        let mut sample_buf = AudioBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
-        decoded.convert(&mut sample_buf);
+        let cap = decoded.capacity() as u64;
+        let spec = *decoded.spec();
+
+        let need_new_buf = match &self.sample_buf {
+            Some(buf) => (buf.capacity() as u64) < cap || *buf.spec() != spec,
+            None => true,
+        };
+        if need_new_buf {
+            self.sample_buf = Some(AudioBuffer::<f32>::new(cap, spec));
+        }
+
+        let sample_buf = self.sample_buf.as_mut().unwrap();
+        decoded.convert(sample_buf);
 
         let frames = sample_buf.frames();
         let chan_count = sample_buf.spec().channels.count();
+        out.reserve(frames * 2);
 
         if chan_count == 1 {
-            // Mono to stereo duplicate
             let mono = sample_buf.chan(0);
-            for &s in mono {
+            for &s in &mono[..frames] {
                 out.push(s);
                 out.push(s);
             }

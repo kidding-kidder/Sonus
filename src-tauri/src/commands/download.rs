@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use tauri::{command, State};
 
 use crate::db::{queries, DbPool};
@@ -26,7 +28,23 @@ pub fn retry_download(id: i64, db: State<'_, DbPool>) -> Result<(), String> {
 }
 
 #[command]
-pub fn cancel_download(id: i64, db: State<'_, DbPool>) -> Result<(), String> {
+pub fn cancel_download(
+    id: i64,
+    db: State<'_, DbPool>,
+    active_pid: State<'_, Arc<AtomicU32>>,
+) -> Result<(), String> {
+    let pid = active_pid.load(Ordering::Relaxed);
+    if pid > 0 {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string(), "/T"])
+                .creation_flags(0x08000000)
+                .output();
+        }
+        active_pid.store(0, Ordering::Relaxed);
+    }
     let conn = db.lock().map_err(|e| e.to_string())?;
     queries::update_download_status(&conn, id, "cancelled", Some("Cancelled by user"))
         .map_err(|e| e.to_string())

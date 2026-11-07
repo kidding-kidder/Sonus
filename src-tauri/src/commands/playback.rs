@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tauri::{command, State};
 
 use crate::audio::AudioEngine;
+use crate::db::{queries, DbPool};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaybackStateDto {
@@ -21,14 +22,51 @@ pub fn play_track(
     path: String,
     start_ms: Option<u64>,
     engine: State<'_, Arc<AudioEngine>>,
+    db: State<'_, DbPool>,
 ) -> Result<(), String> {
-    engine.play(track_id, PathBuf::from(path), start_ms.unwrap_or(0));
+    let mut target_path = PathBuf::from(&path);
+    if !target_path.exists() {
+        if let Ok(conn) = db.lock() {
+            if let Ok(db_path) = conn.query_row(
+                "SELECT path FROM tracks WHERE id = ?1",
+                rusqlite::params![track_id],
+                |r| r.get::<_, String>(0),
+            ) {
+                let db_p = PathBuf::from(&db_path);
+                if db_p.exists() {
+                    target_path = db_p;
+                }
+            }
+            if !target_path.exists() {
+                if let Ok(Some(lib_folder)) = queries::get_setting(&conn, "library_folder") {
+                    if let Some(fname) = target_path.file_name() {
+                        let candidate = PathBuf::from(lib_folder).join(fname);
+                        if candidate.exists() {
+                            let new_str = candidate.to_string_lossy().to_string();
+                            let _ = conn.execute(
+                                "UPDATE tracks SET path = ?1 WHERE id = ?2",
+                                rusqlite::params![new_str, track_id],
+                            );
+                            target_path = candidate;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    engine.play(track_id, target_path, start_ms.unwrap_or(0));
     Ok(())
 }
 
 #[command]
 pub fn pause_playback(engine: State<'_, Arc<AudioEngine>>) -> Result<(), String> {
     engine.pause();
+    Ok(())
+}
+
+#[command]
+pub fn stop_playback(engine: State<'_, Arc<AudioEngine>>) -> Result<(), String> {
+    engine.stop_and_wait();
     Ok(())
 }
 
@@ -47,6 +85,12 @@ pub fn seek_playback(position_ms: u64, engine: State<'_, Arc<AudioEngine>>) -> R
 #[command]
 pub fn set_volume(volume: f32, engine: State<'_, Arc<AudioEngine>>) -> Result<(), String> {
     engine.set_volume(volume);
+    Ok(())
+}
+
+#[command]
+pub fn set_speed(speed: f32, engine: State<'_, Arc<AudioEngine>>) -> Result<(), String> {
+    engine.set_speed(speed);
     Ok(())
 }
 

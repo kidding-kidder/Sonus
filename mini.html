@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sonus Mini Player</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        width: 100%; height: 100%;
+        overflow: hidden;
+        background: #090a0f !important;
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        user-select: none;
+        -webkit-font-smoothing: antialiased;
+      }
+      :root {
+        --accent: #38bdf8;
+        --accent-glow: rgba(56, 189, 248, 0.4);
+      }
+
+      /* ── Mini Card Shell ── */
+      #mini-card {
+        width: 100vw; height: 100vh;
+        background: #090a0f;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 10px 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* Atmospheric Ambient Backlight */
+      #ambient-glow {
+        position: absolute;
+        top: -45%; left: -30%;
+        width: 145%; height: 190%;
+        border-radius: 50%;
+        background: radial-gradient(ellipse at 25% 45%, var(--accent-glow) 0%, transparent 65%);
+        opacity: 0.22;
+        pointer-events: none;
+        z-index: 0;
+        transition: background 1.2s ease, opacity 0.5s ease;
+      }
+
+      /* Drag Region (covers top bar, excluding window buttons) */
+      #mini-drag {
+        position: absolute;
+        top: 0; left: 0; right: 54px;
+        height: 38px;
+        cursor: move;
+        z-index: 10;
+      }
+
+      /* ══ ROW 1: Header (Vinyl Disc + Track Info with EQ badge + Window Actions) ══ */
+      .row-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        position: relative;
+        z-index: 1;
+        min-width: 0;
+      }
+
+      /* ── Spinning Vinyl Record ── */
+      .cd-box {
+        position: relative;
+        width: 42px; height: 42px;
+        flex-shrink: 0;
+      }
+      .cd-disc {
+        width: 42px; height: 42px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at center, transparent 38%, rgba(255,255,255,0.05) 40%, transparent 42%, rgba(255,255,255,0.03) 60%, transparent 62%, rgba(255,255,255,0.05) 85%, transparent 88%),
+          conic-gradient(from 45deg, #1b1c23, #0a0b0f 90deg, #22242c 180deg, #0a0b0f 270deg, #1b1c23 360deg);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: spinVinyl 6.5s linear infinite;
+        animation-play-state: paused;
+        transform: translateZ(0);
+      }
+      .cd-disc.is-spinning {
+        animation-play-state: running;
+      }
+      @keyframes spinVinyl {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .cd-label {
+        width: 25px; height: 25px;
+        border-radius: 50%;
+        overflow: hidden;
+        position: relative;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+        display: flex; align-items: center; justify-content: center;
+        background: #181920;
+      }
+      #cd-img {
+        width: 100%; height: 100%;
+        object-fit: cover;
+        display: none;
+      }
+      #cd-fallback {
+        width: 100%; height: 100%;
+        display: flex; align-items: center; justify-content: center;
+        color: #64748b;
+      }
+      .cd-spindle {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: #090a0f;
+        border: 1.5px solid rgba(255, 255, 255, 0.45);
+        z-index: 3;
+        pointer-events: none;
+      }
+      .cd-sheen {
+        position: absolute; inset: 0;
+        border-radius: 50%;
+        background: conic-gradient(from 120deg at 50% 50%, rgba(255,255,255,0.11) 0deg, transparent 45deg, transparent 180deg, rgba(255,255,255,0.11) 225deg, transparent 270deg, transparent 360deg);
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      /* ── Track Meta Column ── */
+      .meta-col {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        flex: 1;
+        min-width: 0;
+        gap: 2px;
+      }
+      .marquee-box {
+        overflow: hidden;
+        white-space: nowrap;
+        position: relative;
+        mask-image: linear-gradient(to right, black 0%, black calc(100% - 12px), transparent 100%);
+      }
+      .marquee-inner {
+        display: inline-block;
+        white-space: nowrap;
+      }
+      .marquee-inner.is-scrolling {
+        animation: marqueeScroll linear infinite;
+      }
+      @keyframes marqueeScroll {
+        0%, 15%   { transform: translateX(0); }
+        85%, 100% { transform: translateX(var(--scroll-dist, -50px)); }
+      }
+      #mini-title {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #f8fafc;
+        line-height: 1.3;
+        letter-spacing: -0.2px;
+      }
+      .artist-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      #mini-artist {
+        font-size: 10.5px;
+        color: #94a3b8;
+        line-height: 1.3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ── Dancing EQ Waveform Badge (integrated next to artist) ── */
+      .viz-badge {
+        display: inline-flex;
+        align-items: flex-end;
+        gap: 1.5px;
+        height: 10px;
+        flex-shrink: 0;
+        opacity: 0.3;
+        transition: opacity 0.3s ease;
+      }
+      .viz-badge.is-playing { opacity: 0.9; }
+      .viz-bar {
+        width: 2px;
+        border-radius: 1px 1px 0 0;
+        background: var(--accent);
+        min-height: 2px;
+      }
+
+      /* ── Window Controls ── */
+      .win-btns {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex-shrink: 0;
+        z-index: 20;
+      }
+      .win-btn {
+        background: transparent;
+        border: none;
+        color: #64748b;
+        cursor: pointer;
+        width: 22px; height: 22px;
+        border-radius: 5px;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0;
+        transition: color 0.12s, background 0.12s;
+      }
+      .win-btn:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .win-close:hover {
+        color: #f87171;
+        background: rgba(239, 68, 68, 0.16);
+      }
+
+      /* ══ ROW 2: Timeline Progress Scrubber ══ */
+      .row-progress {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        position: relative;
+        z-index: 1;
+        padding: 0 1px;
+      }
+      .time-tag {
+        font-size: 9.5px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: #64748b;
+        letter-spacing: -0.2px;
+        min-width: 24px;
+      }
+      .time-tag.right { text-align: right; }
+      .bar-track {
+        flex: 1;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        cursor: pointer;
+        position: relative;
+        transition: height 0.15s ease;
+      }
+      .bar-track:hover {
+        height: 5px;
+      }
+      #progress-fill {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        border-radius: 999px;
+        position: relative;
+        box-shadow: 0 0 8px var(--accent-glow);
+        transition: width 0.15s linear;
+      }
+      .bar-track:hover #progress-fill::after {
+        content: '';
+        position: absolute;
+        right: -3px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 0 4px rgba(0,0,0,0.8);
+      }
+
+      /* ══ ROW 3: Spacious Controls (Speed Chip | Transport | Volume) ══ */
+      .row-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: relative;
+        z-index: 1;
+        min-width: 0;
+      }
+
+      /* Left: Speed Chip */
+      .speed-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        height: 22px;
+        padding: 0 8px;
+        font-size: 9.5px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: #a1a1aa;
+        cursor: pointer;
+        transition: all 0.12s ease;
+        flex-shrink: 0;
+      }
+      .speed-chip:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--accent);
+        border-color: rgba(255, 255, 255, 0.15);
+      }
+      .speed-chip:active {
+        transform: scale(0.96);
+      }
+
+      /* Center: Transport Cluster */
+      .transport-cluster {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .btn-mode {
+        width: 22px; height: 22px;
+        border-radius: 5px;
+        border: none;
+        background: transparent;
+        color: #52525b;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0;
+        transition: color 0.12s, background 0.12s;
+      }
+      .btn-mode:hover { color: #d4d4d8; background: rgba(255,255,255,0.05); }
+      .btn-mode.is-active {
+        color: var(--accent);
+        filter: drop-shadow(0 0 5px var(--accent-glow));
+      }
+
+      .btn-icon {
+        width: 26px; height: 26px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(255, 255, 255, 0.05);
+        color: #d4d4d8;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0;
+        transition: all 0.12s ease;
+      }
+      .btn-icon:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+        transform: scale(1.08);
+      }
+      .btn-icon:active { transform: scale(0.94); }
+
+      .btn-play-hero {
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: var(--accent);
+        color: #0b0c10;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0;
+        box-shadow: 0 0 14px var(--accent-glow);
+        transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s, filter 0.15s;
+      }
+      .btn-play-hero:hover {
+        transform: scale(1.09);
+        filter: brightness(1.12);
+        box-shadow: 0 0 18px var(--accent-glow);
+      }
+      .btn-play-hero:active { transform: scale(0.95); }
+
+      /* Right: Compact Volume Slider */
+      .vol-box {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+      }
+      .btn-mute {
+        background: transparent;
+        border: none;
+        color: #71717a;
+        cursor: pointer;
+        width: 16px; height: 16px;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0;
+        transition: color 0.1s;
+      }
+      .btn-mute:hover { color: #d4d4d8; }
+      #vol-slider {
+        width: 48px;
+        height: 3px;
+        accent-color: var(--accent);
+        cursor: pointer;
+        opacity: 0.65;
+        transition: opacity 0.15s;
+      }
+      #vol-slider:hover { opacity: 1; }
+
+      /* Hidden sampler canvas */
+      #color-sampler { display: none; }
+    </style>
+  </head>
+  <body>
+    <canvas id="color-sampler" width="16" height="16"></canvas>
+
+    <div id="mini-card">
+      <div id="ambient-glow"></div>
+      <div id="mini-drag"></div>
+
+      <!-- ROW 1: Header (Vinyl Disc + Info with EQ Waveform + Window Actions) -->
+      <div class="row-header">
+        <div class="cd-box">
+          <div class="cd-disc" id="cd-disc">
+            <div class="cd-sheen"></div>
+            <div class="cd-label">
+              <img id="cd-img" src="" alt="" crossorigin="anonymous" />
+              <div id="cd-fallback">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+              </div>
+            </div>
+            <div class="cd-spindle"></div>
+          </div>
+        </div>
+
+        <div class="meta-col">
+          <div class="marquee-box" id="title-box">
+            <span class="marquee-inner" id="mini-title">Nothing playing</span>
+          </div>
+          <div class="artist-row">
+            <span id="mini-artist">Unknown Artist</span>
+            <div class="viz-badge" id="visualizer" title="Now Playing">
+              <div class="viz-bar" id="vb0"></div>
+              <div class="viz-bar" id="vb1"></div>
+              <div class="viz-bar" id="vb2"></div>
+              <div class="viz-bar" id="vb3"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="win-btns">
+          <button class="win-btn" id="btn-open" title="Open Sonus">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h6v6"/><path d="M10 14L21 3"/>
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            </svg>
+          </button>
+          <button class="win-btn win-close" id="btn-close" title="Hide Mini Player">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ROW 2: Timeline Progress Scrubber -->
+      <div class="row-progress">
+        <span class="time-tag" id="time-curr">0:00</span>
+        <div class="bar-track" id="bar-track">
+          <div id="progress-fill"></div>
+        </div>
+        <span class="time-tag right" id="time-total">0:00</span>
+      </div>
+
+      <!-- ROW 3: Spacious Controls (Speed Chip | Transport | Volume) -->
+      <div class="row-controls">
+        <!-- Left: Interactive Speed Chip -->
+        <button class="speed-chip" id="btn-speed" title="Speed (Click to cycle, Wheel to adjust, Right-click reset)">
+          1.0×
+        </button>
+
+        <!-- Center: Transport Cluster -->
+        <div class="transport-cluster">
+          <button class="btn-mode" id="btn-shuffle" title="Shuffle">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/>
+              <polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
+            </svg>
+          </button>
+
+          <button class="btn-icon" id="btn-prev" title="Previous Track">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="19 20 9 12 19 4 19 20"/>
+              <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+          </button>
+
+          <button class="btn-play-hero" id="btn-play" title="Play / Pause">
+            <svg id="svg-play" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="6 3 20 12 6 21 6 3"/>
+            </svg>
+            <svg id="svg-pause" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:none;">
+              <rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/>
+            </svg>
+          </button>
+
+          <button class="btn-icon" id="btn-next" title="Next Track">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 4 15 12 5 20 5 4"/>
+              <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+          </button>
+
+          <button class="btn-mode" id="btn-repeat" title="Repeat Mode">
+            <svg id="svg-repeat" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Right: Volume Slider -->
+        <div class="vol-box">
+          <button class="btn-mute" id="btn-mute" title="Mute / Unmute">
+            <svg class="vol-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+          </button>
+          <input id="vol-slider" type="range" min="0" max="100" step="1" value="100" title="Volume" />
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/mini.ts"></script>
+  </body>
+</html>
