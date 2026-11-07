@@ -20,20 +20,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+          cache: 'npm'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build Sonus Application
-        run: pnpm tauri build
+        run: npx @tauri-apps/cli build
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
