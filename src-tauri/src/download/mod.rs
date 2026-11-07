@@ -1,5 +1,6 @@
 pub mod matcher;
 pub mod queue;
+pub mod soundcloud;
 pub mod spotify;
 pub mod ytdlp;
 
@@ -7,6 +8,8 @@ use std::path::PathBuf;
 
 #[allow(unused_imports)]
 pub use queue::DownloadWorker;
+#[allow(unused_imports)]
+pub use soundcloud::SoundCloudTrack;
 #[allow(unused_imports)]
 pub use spotify::SpotifyItem;
 #[allow(unused_imports)]
@@ -29,6 +32,7 @@ pub fn candidate_bin_dirs() -> Vec<PathBuf> {
     }
     if let Some(local) = dirs::data_local_dir() {
         dirs.push(local.join("Programs").join("Python").join("Python311").join("Scripts"));
+        dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
     }
     dirs
 }
@@ -45,6 +49,23 @@ pub fn resolve_tool_bin(tool_name: &str) -> PathBuf {
             return candidate;
         }
     }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = std::process::Command::new("where.exe").arg(tool_name).output() {
+            if output.status.success() {
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    if let Some(first_line) = stdout.lines().next() {
+                        let path = PathBuf::from(first_line.trim());
+                        if path.exists() {
+                            return path;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     PathBuf::from(tool_name)
 }
 

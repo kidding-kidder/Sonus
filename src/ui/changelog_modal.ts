@@ -10,9 +10,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.4",
+    version: "v0.1.5",
     date: "Latest Release",
     isLatest: true,
+    newFeatures: [
+      "Native SoundCloud API v2 Engine: Real-time SoundCloud search with rich artwork and track metadata in <300ms.",
+      "Instant SoundCloud Audio Previews: Direct 30-second audio stream previews in Finder without waiting for downloads.",
+      "Universal Canonical Resolution: Resolves mobile share links (on.soundcloud.com) directly to full track permalinks.",
+    ],
+    fixes: [
+      "SoundCloud DRM Encryption Bypass: Fixed download failures on DRM-protected tracks (cbc/ctr HLS) by automatically resolving verified high-quality audio alternatives.",
+      "YouTube Age-Restriction Gate Bypass: Skips 18+ age verification barriers ('Sign in to confirm your age') to guarantee reliable fallback downloads.",
+      "SoundCloud Search URIs: Fixed track search returning raw API URIs instead of canonical playable SoundCloud permalinks.",
+    ],
+  },
+  {
+    version: "v0.1.4",
+    date: "November 2026",
     newFeatures: [
       "In-App Changelog: Automatically displays What's New and Fixes after every update.",
       "Settings Changelog Viewer: View full history of past updates at any time from Settings.",

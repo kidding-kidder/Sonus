@@ -237,27 +237,202 @@ async fn run_worker_loop(
                 let is_sc = item.source == crate::model::TrackSource::Soundcloud
                     || trimmed_url.contains("soundcloud.com")
                     || trimmed_url.starts_with("scsearch");
-                let target = if !is_direct_url {
-                    if is_sc { format!("scsearch1:{}", trimmed_url) } else { format!("ytsearch1:{} audio", trimmed_url) }
-                } else {
-                    trimmed_url.clone()
-                };
-                let mut dl_res = ytdlp_engine.download_audio(&target, &job_dir, is_playlist, Some(Arc::clone(&pid_ref)), Some(Arc::clone(&on_progress)), None).await;
+                let dl_res = if is_sc && !is_pl {
+                    // Dedicated SoundCloud resolver & downloader
+                    if let Ok(sc_track) = super::soundcloud::resolve_track(&trimmed_url).await {
+                        info!(
+                            "Resolved SoundCloud track: '{}' by '{}' (DRM: {})",
+                            sc_track.title, sc_track.artist, sc_track.is_drm
+                        );
+                        let safe_a = sanitize_filename(&sc_track.artist);
+                        let safe_t = sanitize_filename(&sc_track.title);
+                        let tmpl = format!("{} - {}.%(ext)s", safe_a, safe_t);
 
-                if dl_res.is_err() && is_sc {
-                    info!("SoundCloud download failed for '{}'. Attempting YouTube audio fallback...", target);
-                    if let Ok(conn) = db.lock() {
-                        let _ = queries::update_download_status(&conn, item.id, "downloading", Some("SoundCloud stream restricted — falling back to YouTube audio..."));
-                    }
-                    if let Some((artist, title)) = ytdlp_engine.fetch_metadata_loose(&target).await {
-                        info!("SoundCloud fallback metadata resolved: '{}' - '{}'", artist, title);
-                        let fallback_query = format!("ytsearch1:{} - {} audio", artist, title);
-                        dl_res = ytdlp_engine.download_audio(&fallback_query, &job_dir, false, Some(Arc::clone(&pid_ref)), Some(Arc::clone(&on_progress)), None).await;
+                        if !sc_track.is_drm {
+                            let stream_target = sc_track.stream_url.as_deref().unwrap_or(&sc_track.permalink_url);
+                            let sc_res = ytdlp_engine
+                                .download_audio(
+                                    stream_target,
+                                    &job_dir,
+                                    false,
+                                    Some(Arc::clone(&pid_ref)),
+                                    Some(Arc::clone(&on_progress)),
+                                    Some(&tmpl),
+                                )
+                                .await;
+
+                            if sc_res.is_ok() {
+                                sc_res
+                            } else {
+                                info!(
+                                    "Direct SoundCloud stream failed for '{}'. Attempting clean audio fallback...",
+                                    sc_track.title
+                                );
+                                if let Ok(conn) = db.lock() {
+                                    let _ = queries::update_download_status(
+                                        &conn,
+                                        item.id,
+                                        "downloading",
+                                        Some("SoundCloud stream restricted — downloading clean official audio..."),
+                                    );
+                                }
+                                let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
+                                ytdlp_engine
+                                    .download_audio(
+                                        &fallback_query,
+                                        &job_dir,
+                                        false,
+                                        Some(Arc::clone(&pid_ref)),
+                                        Some(Arc::clone(&on_progress)),
+                                        Some(&tmpl),
+                                    )
+                                    .await
+                            }
+                        } else {
+                            info!(
+                                "SoundCloud track '{}' is DRM protected. Fetching clean unrestricted audio...",
+                                sc_track.title
+                            );
+                            if let Ok(conn) = db.lock() {
+                                let _ = queries::update_download_status(
+                                    &conn,
+                                    item.id,
+                                    "downloading",
+                                    Some("SoundCloud stream is DRM protected — downloading clean official audio..."),
+                                );
+                            }
+                            let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
+                            ytdlp_engine
+                                .download_audio(
+                                    &fallback_query,
+                                    &job_dir,
+                                    false,
+                                    Some(Arc::clone(&pid_ref)),
+                                    Some(Arc::clone(&on_progress)),
+                                    Some(&tmpl),
+                                )
+                                .await
+                        }
                     } else if !is_direct_url {
-                        let fallback_query = format!("ytsearch1:{} audio", trimmed_url);
-                        dl_res = ytdlp_engine.download_audio(&fallback_query, &job_dir, false, Some(Arc::clone(&pid_ref)), Some(Arc::clone(&on_progress)), None).await;
+                        let sc_search = super::soundcloud::search_tracks(&trimmed_url, 1).await;
+                        if let Ok(tracks) = sc_search {
+                            if let Some(sc_track) = tracks.into_iter().next() {
+                                let safe_a = sanitize_filename(&sc_track.artist);
+                                let safe_t = sanitize_filename(&sc_track.title);
+                                let tmpl = format!("{} - {}.%(ext)s", safe_a, safe_t);
+
+                                if !sc_track.is_drm {
+                                    let stream_target = sc_track.stream_url.as_deref().unwrap_or(&sc_track.permalink_url);
+                                    let sc_res = ytdlp_engine
+                                        .download_audio(
+                                            stream_target,
+                                            &job_dir,
+                                            false,
+                                            Some(Arc::clone(&pid_ref)),
+                                            Some(Arc::clone(&on_progress)),
+                                            Some(&tmpl),
+                                        )
+                                        .await;
+                                    if sc_res.is_ok() {
+                                        sc_res
+                                    } else {
+                                        let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
+                                        ytdlp_engine
+                                            .download_audio(
+                                                &fallback_query,
+                                                &job_dir,
+                                                false,
+                                                Some(Arc::clone(&pid_ref)),
+                                                Some(Arc::clone(&on_progress)),
+                                                Some(&tmpl),
+                                            )
+                                            .await
+                                    }
+                                } else {
+                                    let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
+                                    ytdlp_engine
+                                        .download_audio(
+                                            &fallback_query,
+                                            &job_dir,
+                                            false,
+                                            Some(Arc::clone(&pid_ref)),
+                                            Some(Arc::clone(&on_progress)),
+                                            Some(&tmpl),
+                                        )
+                                        .await
+                                }
+                            } else {
+                                let fallback_query = format!("ytsearch5:{} audio", trimmed_url);
+                                ytdlp_engine
+                                    .download_audio(
+                                        &fallback_query,
+                                        &job_dir,
+                                        false,
+                                        Some(Arc::clone(&pid_ref)),
+                                        Some(Arc::clone(&on_progress)),
+                                        None,
+                                    )
+                                    .await
+                            }
+                        } else {
+                            let fallback_query = format!("ytsearch5:{} audio", trimmed_url);
+                            ytdlp_engine
+                                .download_audio(
+                                    &fallback_query,
+                                    &job_dir,
+                                    false,
+                                    Some(Arc::clone(&pid_ref)),
+                                    Some(Arc::clone(&on_progress)),
+                                    None,
+                                )
+                                .await
+                        }
+                    } else {
+                        let mut res = ytdlp_engine
+                            .download_audio(
+                                &trimmed_url,
+                                &job_dir,
+                                false,
+                                Some(Arc::clone(&pid_ref)),
+                                Some(Arc::clone(&on_progress)),
+                                None,
+                            )
+                            .await;
+
+                        if res.is_err() {
+                            if let Some((artist, title)) = ytdlp_engine.fetch_metadata_loose(&trimmed_url).await {
+                                let fallback_query = format!("ytsearch5:{} - {} audio", artist, title);
+                                res = ytdlp_engine
+                                    .download_audio(
+                                        &fallback_query,
+                                        &job_dir,
+                                        false,
+                                        Some(Arc::clone(&pid_ref)),
+                                        Some(Arc::clone(&on_progress)),
+                                        None,
+                                    )
+                                    .await;
+                            }
+                        }
+                        res
                     }
-                }
+                } else {
+                    let target = if !is_direct_url {
+                        format!("ytsearch1:{} audio", trimmed_url)
+                    } else {
+                        trimmed_url.clone()
+                    };
+                    ytdlp_engine
+                        .download_audio(
+                            &target,
+                            &job_dir,
+                            is_playlist,
+                            Some(Arc::clone(&pid_ref)),
+                            Some(Arc::clone(&on_progress)),
+                            None,
+                        )
+                        .await
+                };
                 dl_res
             };
 

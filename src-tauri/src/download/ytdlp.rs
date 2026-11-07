@@ -63,6 +63,10 @@ impl YtDlpEngine {
             "mp3",
             "--audio-quality",
             "0",
+            "-i",
+            "--no-abort-on-error",
+            "--extractor-args",
+            "youtube:player_client=android,web",
             "--concurrent-fragments",
             "8",
             "--buffer-size",
@@ -80,6 +84,9 @@ impl YtDlpEngine {
             args.push("--yes-playlist");
         } else {
             args.push("--no-playlist");
+            if url.starts_with("ytsearch") || url.starts_with("scsearch") {
+                args.extend(["--max-downloads", "1"]);
+            }
         }
 
         let ffmpeg_bin = super::resolve_tool_bin("ffmpeg");

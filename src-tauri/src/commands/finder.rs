@@ -198,6 +198,36 @@ async fn run_ytdlp_search(
     results
 }
 
+async fn run_soundcloud_search(query: &str, limit: usize) -> Vec<OnlineSearchResult> {
+    if let Ok(tracks) = crate::download::soundcloud::search_tracks(query, limit).await {
+        if !tracks.is_empty() {
+            return tracks
+                .into_iter()
+                .map(|t| {
+                    let dur_sec = (t.duration_ms / 1000) as u32;
+                    OnlineSearchResult {
+                        id: t.id.to_string(),
+                        title: t.title,
+                        artist: t.artist,
+                        album: None,
+                        duration_sec: dur_sec,
+                        duration_string: format_duration(dur_sec),
+                        thumbnail_url: t.artwork_url,
+                        url: if !t.permalink_url.is_empty() {
+                            t.permalink_url
+                        } else {
+                            format!("https://api.soundcloud.com/tracks/{}", t.id)
+                        },
+                        source: "soundcloud".to_string(),
+                        preview_url: t.stream_url,
+                    }
+                })
+                .collect();
+        }
+    }
+    run_ytdlp_search("scsearch", query, limit, "soundcloud").await
+}
+
 #[command]
 pub async fn search_online_tracks(
     query: String,
@@ -212,12 +242,12 @@ pub async fn search_online_tracks(
 
     match platform.to_lowercase().as_str() {
         "youtube" | "yt" => Ok(run_ytdlp_search("ytsearch", clean_query, 12, "youtube").await),
-        "soundcloud" | "sc" => Ok(run_ytdlp_search("scsearch", clean_query, 12, "soundcloud").await),
+        "soundcloud" | "sc" => Ok(run_soundcloud_search(clean_query, 12).await),
         _ => {
             // Blended search: YouTube + SoundCloud
             let (yt_res, sc_res) = tokio::join!(
                 run_ytdlp_search("ytsearch", clean_query, 8, "youtube"),
-                run_ytdlp_search("scsearch", clean_query, 6, "soundcloud")
+                run_soundcloud_search(clean_query, 6)
             );
 
             let mut blended = Vec::new();
@@ -274,6 +304,20 @@ pub async fn get_online_stream_url(url: String) -> Result<Option<String>, String
     let _ = std::fs::create_dir_all(&preview_dir);
     let out_file = preview_dir.join("preview_30s.mp3");
 
+    let target_url = if clean.contains("soundcloud.com") || clean.contains("tracks:") {
+        if let Ok(sc_track) = crate::download::soundcloud::resolve_track(clean).await {
+            if let Some(stream) = sc_track.stream_url {
+                stream
+            } else {
+                format!("ytsearch1:{} - {} audio", sc_track.artist, sc_track.title)
+            }
+        } else {
+            clean.to_string()
+        }
+    } else {
+        clean.to_string()
+    };
+
     let bin = resolve_ytdlp();
     let ffmpeg_dir = crate::download::resolve_tool_bin("ffmpeg")
         .parent()
@@ -287,6 +331,10 @@ pub async fn get_online_stream_url(url: String) -> Result<Option<String>, String
     cmd.kill_on_drop(true);
     cmd.args([
         "--no-playlist",
+        "-i",
+        "--no-abort-on-error",
+        "--extractor-args",
+        "youtube:player_client=android,web",
         "--no-warnings",
         "--no-check-certificates",
         "-f",
@@ -303,7 +351,7 @@ pub async fn get_online_stream_url(url: String) -> Result<Option<String>, String
         &ffmpeg_dir.to_string_lossy(),
         "-o",
         &out_file.to_string_lossy(),
-        clean,
+        &target_url,
     ]);
     cmd.stdout(Stdio::null()).stderr(Stdio::null());
 
