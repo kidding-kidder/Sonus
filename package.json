@@ -1,6 +1,6 @@
 {
   "name": "sonus",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Local-first desktop music player and downloader",
   "private": true,
   "type": "module",

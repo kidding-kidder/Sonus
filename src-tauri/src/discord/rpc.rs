@@ -257,7 +257,13 @@ fn build_activity(up: &RpcTrackUpdate) -> Option<serde_json::Value> {
             "large_text": large_text,
             "small_image": small_image,
             "small_text": small_text,
-        }
+        },
+        "buttons": [
+            {
+                "label": "Download Sonus",
+                "url": "https://github.com/kidding-kidder/Sonus/releases/latest"
+            }
+        ]
     });
 
     if let Some(ts) = timestamps {

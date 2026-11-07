@@ -116,7 +116,7 @@ export class SettingsView {
           <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: var(--space-2) 0; border-top: 1px solid var(--color-border-subtle);">
             <div>
               <div style="font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text-primary);">Discord Rich Presence (RPC)</div>
-              <div style="font-size: var(--font-size-xs); color: var(--color-text-muted);">Broadcast currently playing song, artist, album cover, and progress bar to Discord (Default: On).</div>
+              <div style="font-size: var(--font-size-xs); color: var(--color-text-muted);">Broadcast currently playing song, artist, album cover, progress bar, and "Download Sonus" button to Discord (Default: On).</div>
             </div>
             <input id="toggle-discord-rpc" type="checkbox" ${this.state.discordRpcEnabled ? "checked" : ""} style="width: 18px; height: 18px; accent-color: var(--color-accent); cursor: pointer;" />
           </label>

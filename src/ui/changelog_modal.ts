@@ -10,9 +10,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.5",
+    version: "v0.1.6",
     date: "Latest Release",
     isLatest: true,
+    newFeatures: [
+      "Discord Rich Presence Download Button: Added interactive 'Download Sonus' button to your Discord activity that links straight to the latest GitHub release.",
+    ],
+    fixes: [
+      "Enhanced Discord Rich Presence metadata formatting for profile card button rendering.",
+    ],
+  },
+  {
+    version: "v0.1.5",
+    date: "November 2026",
     newFeatures: [
       "Native SoundCloud API v2 Engine: Real-time SoundCloud search with rich artwork and track metadata in <300ms.",
       "Instant SoundCloud Audio Previews: Direct 30-second audio stream previews in Finder without waiting for downloads.",
