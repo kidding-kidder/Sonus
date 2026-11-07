@@ -18,6 +18,7 @@ import { TaskbarBridge } from "./ui/taskbar_bridge";
 import { RecommendedSongsView } from "./ui/recommended_view";
 import { ChatbotView } from "./ui/chatbot_view";
 import { MiniPlayerBridge } from "./ui/mini_player_bridge";
+import { checkAndShowUpdateChangelog } from "./ui/changelog_modal";
 import { listen } from "@tauri-apps/api/event";
 import "./styles/main.css";
 
@@ -123,6 +124,11 @@ class SonusApp {
         this.shell.showUpdateAvailable(e.detail.version, () => this.handleTriggerUpdate());
       }
     });
+
+    // Check if user updated app to show Changelog
+    setTimeout(() => {
+      checkAndShowUpdateChangelog();
+    }, 600);
 
     // Automatic update checks: 2 seconds after launch, every 10s, and on window focus
     setTimeout(() => {
