@@ -76,9 +76,47 @@ pub fn cleanup_old_binary() {
 pub async fn check_for_updates() -> Result<Option<UpdateInfo>, String> {
     cleanup_old_binary();
 
+    // 1. Fast, unauthenticated, rate-limit-free web HEAD check
+    // GitHub redirects https://github.com/{repo}/releases/latest to /releases/tag/vX.Y.Z via 302 Found.
+    // This uses normal web HTTP without consuming GitHub REST API rate limits (60/hr).
+    let web_client = reqwest::Client::builder()
+        .user_agent("Sonus-Desktop-App")
+        .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
+        .build();
+
+    if let Ok(client) = web_client {
+        let web_url = format!("https://github.com/{}/releases/latest", GITHUB_REPO);
+        if let Ok(res) = client.head(&web_url).send().await {
+            if let Some(loc) = res.headers().get("location") {
+                if let Ok(loc_str) = loc.to_str() {
+                    if let Some(tag) = loc_str.split("/tag/").nth(1) {
+                        let tag = tag.trim();
+                        if !is_version_newer(tag, CURRENT_VERSION) {
+                            return Ok(None);
+                        }
+
+                        return Ok(Some(UpdateInfo {
+                            version: tag.trim_start_matches('v').to_string(),
+                            tag_name: tag.to_string(),
+                            download_url: format!(
+                                "https://github.com/{}/releases/download/{}/sonus.exe",
+                                GITHUB_REPO, tag
+                            ),
+                            asset_name: "sonus.exe".to_string(),
+                            file_size: 0,
+                            release_notes: None,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Fallback to GitHub REST API if HEAD check wasn't conclusive
     let client = reqwest::Client::builder()
         .user_agent("Sonus-Desktop-App")
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(8))
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 

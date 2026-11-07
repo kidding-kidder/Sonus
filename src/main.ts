@@ -124,22 +124,41 @@ class SonusApp {
       }
     });
 
-    // Check GitHub for latest release 3 seconds after launch
+    // Automatic update checks: 2 seconds after launch, every 10s, and on window focus
     setTimeout(() => {
-      this.checkAppUpdates();
-    }, 3000);
+      this.checkAppUpdates(true);
+    }, 2000);
+
+    setInterval(() => {
+      if (!this.availableUpdate && !this.isUpdating) {
+        this.checkAppUpdates(true);
+      }
+    }, 10000);
+
+    window.addEventListener("focus", () => {
+      if (!this.availableUpdate && !this.isUpdating) {
+        this.checkAppUpdates(true);
+      }
+    });
   }
 
-  public async checkAppUpdates(): Promise<void> {
+  public async checkAppUpdates(silent: boolean = false): Promise<void> {
     try {
       const update = await api.checkForUpdates();
       if (update) {
+        const isFirst = !this.availableUpdate;
         this.availableUpdate = update;
         this.shell.showUpdateAvailable(update.version, () => this.handleTriggerUpdate());
-        ToastManager.get().info(`New version Sonus v${update.version} available! Click the green button at the top to update.`);
+        if (isFirst && !silent) {
+          ToastManager.get().info(`Sonus v${update.version} is available!`);
+        }
+      } else if (!silent) {
+        ToastManager.get().info("Sonus is up to date.");
       }
     } catch (e) {
-      console.warn("Update check error:", e);
+      if (!silent) {
+        console.warn("Update check error:", e);
+      }
     }
   }
 

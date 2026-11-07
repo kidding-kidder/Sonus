@@ -82,12 +82,9 @@ export class AppShell {
       <div class="titlebar" data-tauri-drag-region>
         <div class="titlebar-brand" data-tauri-drag-region><span style="width: 18px; height: 18px; display: inline-block;">${ICONS.appLogo}</span><span>Sonus</span></div>
         <div id="titlebar-ticker" class="titlebar-drag" data-tauri-drag-region>Sonus — Local-First Music Player</div>
-        <div id="titlebar-update-slot" style="display: none; align-items: center; margin-right: 10px; z-index: 100;">
-          <button id="btn-update-download" class="update-pill-btn" title="Click to update Sonus to latest version">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span id="update-btn-text">Update Available</span>
+        <div id="titlebar-update-slot" style="display: none; align-items: center; margin-right: 12px; z-index: 100;">
+          <button id="btn-update-download" class="update-text-btn" title="Click to update Sonus">
+            <span id="update-btn-text">New Update Available</span>
           </button>
         </div>
         <div class="titlebar-controls">
@@ -406,12 +403,12 @@ export class AppShell {
   public getNowPlayingPanelContainer(): HTMLElement { return this.container.querySelector("#now-playing-panel") as HTMLElement; }
   public updateLibraryStats(text: string): void { const s = this.container.querySelector("#library-stats"); if (s) s.textContent = text; }
 
-  public showUpdateAvailable(version: string, onClick: () => void): void {
+  public showUpdateAvailable(_version: string, onClick: () => void): void {
     const slot = this.container.querySelector<HTMLElement>("#titlebar-update-slot");
     const btn = this.container.querySelector<HTMLElement>("#btn-update-download");
     const txt = this.container.querySelector<HTMLElement>("#update-btn-text");
     if (!slot || !btn || !txt) return;
-    txt.textContent = `Update v${version}`;
+    txt.textContent = "New Update Available";
     btn.onclick = onClick;
     slot.style.display = "flex";
   }
@@ -423,7 +420,7 @@ export class AppShell {
     btn.classList.add("is-updating");
     btn.setAttribute("disabled", "true");
     if (percent !== undefined) {
-      txt.textContent = `Downloading ${Math.round(percent)}%`;
+      txt.textContent = `Downloading ${Math.round(percent)}%...`;
     } else {
       txt.textContent = "Updating...";
     }
@@ -437,7 +434,7 @@ export class AppShell {
       btn.removeAttribute("disabled");
     }
     if (txt) {
-      txt.textContent = "Update Available";
+      txt.textContent = "New Update Available";
     }
   }
 

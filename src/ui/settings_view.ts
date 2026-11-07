@@ -383,10 +383,10 @@ export class SettingsView {
       try {
         const update = await api.checkForUpdates();
         if (update) {
-          if (statusMsg) statusMsg.innerHTML = `<span style="color: #22c55e; font-weight: 600;">Update v${update.version} available! Look at the top bar.</span>`;
+          if (statusMsg) statusMsg.innerHTML = `<span style="color: #22c55e; font-weight: 600;">New update available! Look at the top bar.</span>`;
           window.dispatchEvent(new CustomEvent("sonus:update-found", { detail: update }));
         } else {
-          if (statusMsg) statusMsg.textContent = "You are on the latest version (v0.1.0).";
+          if (statusMsg) statusMsg.textContent = "You are on the latest version.";
         }
       } catch (err: unknown) {
         if (statusMsg) statusMsg.textContent = `Error: ${String(err)}`;
