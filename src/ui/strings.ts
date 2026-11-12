@@ -14,7 +14,6 @@ export const STRINGS = {
     downloads: "Downloads",
     settings: "Settings",
     newPlaylist: "New Playlist",
-    chatbot: "AI Chat",
   },
   search: {
     placeholder: "Search tracks, artists, albums (Ctrl+F)...",

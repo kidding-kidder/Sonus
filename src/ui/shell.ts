@@ -112,7 +112,6 @@ export class AppShell {
           </div>
           <div class="sidebar-section">
             <div class="nav-item ${this.currentView === "downloads" ? "active" : ""}" data-view="downloads" title="${STRINGS.nav.downloads}"><span class="icon">${ICONS.download}</span><span class="sidebar-label">${STRINGS.nav.downloads}</span></div>
-            <div class="nav-item ${this.currentView === "chatbot" ? "active" : ""}" data-view="chatbot" title="${STRINGS.nav.chatbot}"><span class="icon">${ICONS.bot}</span><span class="sidebar-label">${STRINGS.nav.chatbot}</span></div>
             <div class="nav-item ${this.currentView === "settings" ? "active" : ""}" data-view="settings" title="${STRINGS.nav.settings}"><span class="icon">${ICONS.settings}</span><span class="sidebar-label">${STRINGS.nav.settings}</span></div>
           </div>
         </aside>
@@ -184,7 +183,7 @@ export class AppShell {
     }
     if (renameBtn) renameBtn.style.display = "none";
     if (plCoverEl) plCoverEl.style.display = "none";
-    const titles: Record<string, string> = { downloads: STRINGS.nav.downloads, settings: STRINGS.nav.settings, finder: STRINGS.nav.finder, chatbot: STRINGS.nav.chatbot };
+    const titles: Record<string, string> = { downloads: STRINGS.nav.downloads, settings: STRINGS.nav.settings, finder: STRINGS.nav.finder };
     titleEl.textContent = titles[this.currentView] || STRINGS.nav.allSongs;
   }
 

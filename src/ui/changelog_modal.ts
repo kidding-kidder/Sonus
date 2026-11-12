@@ -10,9 +10,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.7",
+    version: "v0.1.8",
     date: "Latest Release",
     isLatest: true,
+    newFeatures: [
+      "Streamlined UI: Fully removed AI chat module and sidebar clutter for a cleaner, faster local music experience.",
+    ],
+    fixes: [
+      "App Size Optimization: Cleaned up unused network models and UI assets.",
+    ],
+  },
+  {
+    version: "v0.1.7",
+    date: "November 2026",
     newFeatures: [
       "Automatic Tool Provisioning: Sonus now automatically checks, downloads, and configures yt-dlp and FFmpeg on first launch or download so you never have to install external tools manually.",
       "Download Engine Health Monitor: New status monitor in Settings showing yt-dlp & FFmpeg status with 1-click Download / Repair.",

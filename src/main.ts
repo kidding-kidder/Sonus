@@ -16,7 +16,6 @@ import { PointerDragManager } from "./ui/drag_state";
 import { bindGlobalShortcuts } from "./ui/shortcuts";
 import { TaskbarBridge } from "./ui/taskbar_bridge";
 import { RecommendedSongsView } from "./ui/recommended_view";
-import { ChatbotView } from "./ui/chatbot_view";
 import { MiniPlayerBridge } from "./ui/mini_player_bridge";
 import { checkAndShowUpdateChangelog } from "./ui/changelog_modal";
 import { listen } from "@tauri-apps/api/event";
@@ -32,7 +31,6 @@ class SonusApp {
   private settingsView: SettingsView | null = null;
   private finderView: FinderView | null = null;
   private recommendedView: RecommendedSongsView | null = null;
-  private chatbotView: ChatbotView | null = null;
   private pendingPlaylistAdds: Array<{ playlistId: number; title: string; artist: string; url: string }> = [];
   private currentView: string = "all_songs";
   private currentPlaylistId?: number;
@@ -192,8 +190,6 @@ class SonusApp {
     this.finderView = null;
     this.recommendedView?.destroy();
     this.recommendedView = null;
-    this.chatbotView?.destroy();
-    this.chatbotView = null;
     try { (window as any).gc?.(); } catch {}
     const container = this.shell.getViewContainer();
 
@@ -225,9 +221,6 @@ class SonusApp {
     } else if (view === "settings") {
       this.settingsView = new SettingsView(container, this.settingsManager.state, { onScanFolder: (p) => this.handleScan(p), onUpdateSetting: (k, v) => this.settingsManager.updateSetting(k, v), onUpdateEq: (b) => this.settingsManager.updateEq(b), onUpdateCrossfade: (s) => this.settingsManager.updateSetting("crossfade_sec", String(s)), onApplyCustomCss: (c, t) => this.settingsManager.applyCustomCss(c, t) });
       this.settingsView.render();
-    } else if (view === "chatbot") {
-      this.playlistBanner = null; this.virtualList = null;
-      this.chatbotView = new ChatbotView(container, { getTracks: () => this.tracks, getPlaylists: () => this.playlists, getCurrentTrack: () => this.player.getCurrentTrack() as any, isPlaying: () => this.player.state.is_playing, getDurationMs: () => this.player.state.duration_ms, getVolumePct: () => this.player.state.volume * 100, getSnowEnabled: () => this.settingsManager.state.snowEnabled, getDiscordRpcEnabled: () => this.settingsManager.state.discordRpcEnabled, getEqBands: () => this.settingsManager.state.eqBands, getTheme: () => this.settingsManager.state.theme, onPlayTrack: (t) => { this.activePlaylistId = undefined; this.player.playTrack(t as any); }, onTogglePlay: () => this.player.togglePlayback(), onNext: () => this.player.playNext(), onPrev: () => this.player.playPrev(), onSetVolume: (v) => this.player.setVolume(v / 100), onSetSpeed: (s) => this.player.setSpeed(s), onSeekMs: (ms) => this.player.seekToMs(ms), onToggleShuffle: () => this.player.toggleShuffle(), onCycleRepeat: () => this.player.cycleRepeat(), onSetSnow: (en) => this.settingsManager.updateSetting("snow_enabled", String(en)), onSetDiscordRpc: (en) => this.settingsManager.updateSetting("discord_rpc_enabled", String(en)), onSetBass: (v) => { const b = [...this.settingsManager.state.eqBands]; b[0]=v; b[1]=Math.round(v*0.8); b[2]=Math.round(v*0.5); this.settingsManager.updateEq(b); }, onSetTheme: (t) => this.settingsManager.updateSetting("theme", t), onApplyEqPreset: (b) => this.settingsManager.updateEq(b), onCreatePlaylist: (n) => api.createPlaylist(n).then(() => this.loadPlaylists()).catch(() => {}), onDeletePlaylist: (id) => { api.deletePlaylist(id).then(async () => { if (this.activePlaylistId === id) this.activePlaylistId = undefined; await this.loadPlaylists(); if (this.currentPlaylistId === id) this.navigate("all_songs"); }).catch(() => {}); }, onDownload: (q) => this.downloads.enqueue(q.match(/^https?:\/\//) ? q : "ytsearch1:" + q, "youtube"), onMinimize: () => api.windowMinimize(), onDeleteTrack: (id) => { const isCur = this.player.getCurrentTrack()?.id === id; (isCur ? this.player.stopPlayback() : Promise.resolve()).then(() => api.removeTrack(id, false)).then(() => { this.tracks = this.tracks.filter(x => x.id !== id); }).catch(e => ToastManager.get().error(String(e))); } }); this.chatbotView.render();
     }
   }
 
