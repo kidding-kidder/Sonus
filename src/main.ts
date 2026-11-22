@@ -17,6 +17,7 @@ import { bindGlobalShortcuts } from "./ui/shortcuts";
 import { TaskbarBridge } from "./ui/taskbar_bridge";
 import { RecommendedSongsView } from "./ui/recommended_view";
 import { MiniPlayerBridge } from "./ui/mini_player_bridge";
+import { MediaSessionBridge } from "./ui/media_session";
 import { checkAndShowUpdateChangelog } from "./ui/changelog_modal";
 import { listen } from "@tauri-apps/api/event";
 import "./styles/main.css";
@@ -26,6 +27,7 @@ class SonusApp {
   private nowPlayingPanel: NowPlayingPanel; private player: PlaybackController;
   private downloads: DownloadsController; private settingsManager: SettingsManager;
   private taskbar: TaskbarBridge; private miniPlayer: MiniPlayerBridge | null = null;
+  private mediaSession: MediaSessionBridge;
   private virtualList: VirtualTrackList | null = null;
   private playlistBanner: PlaylistBanner | null = null;
   private settingsView: SettingsView | null = null;
@@ -68,11 +70,29 @@ class SonusApp {
       getSleepTimerRemaining: () => this.player.getSleepTimerRemaining(),
     });
 
+    this.mediaSession = new MediaSessionBridge({
+      onPlay: () => this.player.togglePlayback(),
+      onPause: () => this.player.togglePlayback(),
+      onNext: () => this.player.playNext(),
+      onPrev: () => this.player.playPrev(),
+      onSeek: (ms) => this.player.seekToMs(ms),
+    });
+
     this.player = new PlaybackController(this.shell, this.nowPlayingPanel, () => this.tracks, () => this.getCurrentPlaylistName(), () => this.activePlaylistId, (tid, playing) => {
       this.syncVirtualListActiveTrack(tid, playing);
       this.shell.setPlayingPlaylist(this.activePlaylistId ?? null, playing);
       this.playlistBanner?.setPlayingState(this.isCurrentPlaylistPlaying(playing));
       this.taskbar?.syncState(playing); this.miniPlayer?.syncState();
+      const cur = this.player.getCurrentTrack();
+      this.mediaSession.update({
+        title: cur?.title ?? "Sonus",
+        artist: cur?.artist ?? "Sonus",
+        album: cur?.album ?? "Sonus",
+        coverUrl: this.player.getCurrentCover(),
+        isPlaying: playing,
+        positionMs: this.player.state.position_ms,
+        durationMs: this.player.state.duration_ms,
+      });
     });
 
     this.taskbar = new TaskbarBridge({

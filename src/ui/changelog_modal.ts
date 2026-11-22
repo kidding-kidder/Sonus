@@ -14,12 +14,14 @@ export const CHANGELOGS: ChangelogEntry[] = [
     date: "Latest Release",
     isLatest: true,
     newFeatures: [
-      "Crosshair Game Overlay: Converted Mini Player into a true non-activating DirectFlip hardware overlay (similar to Crosshair X).",
-      "Click-Through Game Mode: Press Ctrl+Alt+X or click the Crosshair icon to pass mouse clicks directly through the overlay into your game (for uninterrupted shooting, aiming, and gameplay).",
+      "Xbox Game Bar (Win + G) In-Game Overlay: Full native integration with Windows System Media Transport Controls (SMTC). Press Win + G in any game, open Audio, and pin Sonus directly over your game with zero FPS drop even in Exclusive Fullscreen mode.",
+      "Hardware Media Keys: Control playback using keyboard/headset media keys (Play, Pause, Skip, Previous) from anywhere.",
+      "Crosshair Game Overlay: Converted Mini Player into a non-activating DirectFlip hardware overlay (similar to Crosshair X).",
+      "Click-Through Game Mode: Press Ctrl+Alt+X or click the Crosshair icon to pass mouse clicks directly through the overlay into your game.",
       "Translucent Acrylic Glass: Upgraded Mini Player to a hardware-accelerated translucent acrylic card with smooth backdrop blur.",
     ],
     fixes: [
-      "Fullscreen Game FPS Drop & Flickering: Eliminated all window focus fights and DirectFlip presentation drops by using Win32 WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, and disabling DWM transitions.",
+      "Fullscreen Game FPS Drop & Flickering: Subclassed WM_MOUSEACTIVATE with MA_NOACTIVATE across all overlay windows so clicking buttons never steals focus or revokes DirectFlip.",
       "Zero Focus Stealing: Opening or interacting with the Mini Player no longer minimizes or alt-tabs games out of fullscreen mode.",
     ],
   },
