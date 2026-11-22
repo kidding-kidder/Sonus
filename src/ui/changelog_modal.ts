@@ -10,9 +10,30 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.10",
-    date: "Latest Release",
+    version: "v0.1.12",
+    date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Sleep Timer: Now reliably pauses playback at the set time or at the end of the current track.",
+    ],
+    fixes: [
+      "Changelog no longer shows on every startup — version tracking moved to persistent backend storage.",
+      "Fixed incorrect lyrics appearing on tracks with symbol-only titles or mismatched artists.",
+      "Removed directory-level lyrics.lrc fallback that could bleed lyrics across all tracks in a folder.",
+    ],
+  },
+  {
+    version: "v0.1.11",
+    date: "November 2026",
+    newFeatures: [],
+    fixes: [
+      "Strict artist and title matching for lyrics — LRCLIB search now validates artist and title before accepting any result.",
+    ],
+  },
+  {
+    version: "v0.1.10",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Stable Rollback & Rebuild: Restored rock-solid, ultra-lightweight core playback engine and streamlined classic Mini Player.",
     ],
@@ -138,23 +159,29 @@ export const CHANGELOGS: ChangelogEntry[] = [
   },
 ];
 
-const STORAGE_KEY = "sonus_last_seen_version";
+const SETTING_KEY = "last_seen_version";
 
 /**
  * Checks if the user just updated the app, and if so, shows the changelog modal automatically.
+ * Uses backend SQLite settings for reliable persistence across sessions (avoids WebView2 localStorage resets).
  */
 export async function checkAndShowUpdateChangelog(): Promise<void> {
   try {
     const currentVersion = await api.getAppVersion();
-    const lastSeenVersion = localStorage.getItem(STORAGE_KEY);
+    let lastSeenVersion: string | null = null;
+    try {
+      lastSeenVersion = await api.getSetting(SETTING_KEY);
+    } catch {
+      // Setting not yet stored — treat as first run
+    }
 
     if (lastSeenVersion && lastSeenVersion !== currentVersion) {
       // Just updated! Show changelog for this new version
       showChangelogModal(currentVersion);
     }
 
-    // Always update stored version to current
-    localStorage.setItem(STORAGE_KEY, currentVersion);
+    // Always persist current version to backend
+    await api.setSetting(SETTING_KEY, currentVersion);
   } catch (err) {
     console.warn("Failed to check changelog version:", err);
   }

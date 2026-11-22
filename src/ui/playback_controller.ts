@@ -174,7 +174,11 @@ export class PlaybackController {
   }
 
   public async playNext(isNaturalEnd: boolean = false): Promise<void> {
-    if (isNaturalEnd && this.sleepTimer.shouldStopAtEndOfTrack()) { await this.pause(); return; }
+    if (isNaturalEnd && this.sleepTimer.shouldStopAtEndOfTrack()) {
+      await this.pause();
+      await this.seekToMs(0);
+      return;
+    }
     if (this.userQueue.length > 0) {
       const nextTrack = this.userQueue.shift()!;
       await this.playTrack(nextTrack, false);
@@ -224,7 +228,15 @@ export class PlaybackController {
   }
 
   public async pause(): Promise<void> {
-    if (this.state.is_playing) { this.isPausedByUser = true; await api.pausePlayback(); }
+    this.isPausedByUser = true;
+    this.state.is_playing = false;
+    try {
+      await api.pausePlayback();
+    } catch {}
+    if (this.currentTrack) {
+      this.shell.updatePlaybackVisual(this.currentTrack.title, this.currentTrack.artist, false, this.state.position_ms, this.state.duration_ms);
+      this.onStateChange?.(this.currentTrack.id, false);
+    }
   }
 
   public getIsShuffle(): boolean { return this.isShuffle; }
@@ -355,6 +367,8 @@ export class PlaybackController {
 
     const tick = async () => {
       try {
+        this.sleepTimer.checkExpired();
+
         if (!this.currentTrack) {
           scheduleNext();
           return;
@@ -392,7 +406,7 @@ export class PlaybackController {
             activeContext,
           );
 
-          const isAtEnd = remote.duration_ms > 0 && remote.position_ms >= remote.duration_ms - 800;
+          const isAtEnd = this.state.is_playing && !this.isPausedByUser && remote.is_playing && remote.duration_ms > 0 && remote.position_ms >= remote.duration_ms - 800;
           const stoppedNaturally = !remote.is_playing && prevPlaying && !this.isPausedByUser && remote.duration_ms > 0 && remote.position_ms >= remote.duration_ms - 1500;
 
           if ((isAtEnd || stoppedNaturally) && !this.isAdvancingTrack && Date.now() > this.toggleLockUntil) {
