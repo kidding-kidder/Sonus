@@ -114,17 +114,10 @@ class SonusApp {
     window.addEventListener("sonus:playlist-download", (e: any) => { if (e.detail) this.pendingPlaylistAdds.push(e.detail); });
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
-        try { (window as any).gc?.(); } catch {}
         api.trimMemory().catch(() => {});
       }
     });
-    window.addEventListener("blur", () => {
-      try { (window as any).gc?.(); } catch {}
-      api.trimMemory().catch(() => {});
-    });
-    setInterval(() => {
-      try { (window as any).gc?.(); } catch {}
-    }, 35000); this.downloads.ensurePolling();
+    this.downloads.ensurePolling();
     await this.settingsManager.restore((vol) => this.player.setVolume(vol));
     await this.loadPlaylists(); await this.navigate("all_songs");
     this.player.startPolling();

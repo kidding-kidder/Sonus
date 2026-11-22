@@ -11,7 +11,7 @@ use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE,
     HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE,
-    SW_SHOWNOACTIVATE, WM_MOUSEACTIVATE, WM_NCACTIVATE, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    SW_SHOWNOACTIVATE, WM_MOUSEACTIVATE, WS_EX_LAYERED, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
 };
 
@@ -33,7 +33,6 @@ unsafe extern "system" fn overlay_subclass_proc(
 ) -> LRESULT {
     match msg {
         WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE),
-        WM_NCACTIVATE => LRESULT(0),
         _ => DefSubclassProc(hwnd, msg, wparam, lparam),
     }
 }
@@ -105,7 +104,7 @@ pub fn setup_overlay_window(hwnd: HWND, click_through: bool) {
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         );
     }
 
