@@ -159,7 +159,8 @@ export async function checkAndShowUpdateChangelog(): Promise<void> {
  * Displays the Changelog Modal with New & Fixes sections and past updates history.
  */
 export function showChangelogModal(_highlightVersion?: string): void {
-  document.getElementById("sonus-changelog-modal")?.remove();
+  // Clear any existing changelog instances
+  document.querySelectorAll("#sonus-changelog-modal, .sonus-changelog-backdrop").forEach((el) => el.remove());
 
   const latest = CHANGELOGS[0];
   if (!latest) return;
@@ -167,21 +168,22 @@ export function showChangelogModal(_highlightVersion?: string): void {
 
   const backdrop = document.createElement("div");
   backdrop.id = "sonus-changelog-modal";
+  backdrop.className = "sonus-changelog-backdrop";
   backdrop.style.cssText = `
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.72);
+    background: rgba(0, 0, 0, 0.76);
     backdrop-filter: blur(6px);
-    z-index: 9999;
+    z-index: 999999;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
-    animation: fadeIn 0.2s ease-out;
+    pointer-events: auto;
   `;
 
   backdrop.innerHTML = `
-    <div style="
+    <div id="sonus-changelog-dialog" style="
       background: var(--color-bg-surface, #18181b);
       border: 1px solid var(--color-border, #2c2c32);
       border-radius: 14px;
@@ -190,18 +192,20 @@ export function showChangelogModal(_highlightVersion?: string): void {
       max-height: 85vh;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75);
       overflow: hidden;
-      animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      pointer-events: auto;
     ">
       <!-- Modal Header -->
       <div style="
-        padding: 18px 22px 14px;
+        padding: 16px 20px 14px;
         border-bottom: 1px solid var(--color-border, #2c2c32);
         display: flex;
         align-items: center;
         justify-content: space-between;
         background: var(--color-bg-elevated, #202025);
+        flex-shrink: 0;
       ">
         <div style="display: flex; align-items: center; gap: 10px;">
           <div style="
@@ -224,30 +228,32 @@ export function showChangelogModal(_highlightVersion?: string): void {
             </p>
           </div>
         </div>
-        <button id="btn-close-changelog-x" style="
-          background: transparent;
-          border: none;
-          color: var(--color-text-muted, #71717a);
-          font-size: 18px;
+        <button id="btn-close-changelog-x" type="button" style="
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: var(--color-text-primary, #f4f4f5);
+          font-size: 16px;
+          font-weight: 700;
           cursor: pointer;
           width: 32px;
           height: 32px;
-          border-radius: 6px;
+          border-radius: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: background 0.15s, color 0.15s;
-        ">✕</button>
+          transition: background 0.15s ease, color 0.15s ease;
+        " title="Close Changelog (Esc)">✕</button>
       </div>
 
-      <!-- Modal Body (Scrollable) -->
+      <!-- Modal Body (Scrollable with min-height: 0) -->
       <div style="
-        padding: 18px 22px;
+        padding: 18px 20px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
         gap: 20px;
-        flex: 1;
+        flex: 1 1 auto;
+        min-height: 0;
       ">
         <!-- Current / Highlighted Version -->
         <div style="
@@ -370,22 +376,27 @@ export function showChangelogModal(_highlightVersion?: string): void {
 
       <!-- Modal Footer -->
       <div style="
-        padding: 12px 22px;
+        padding: 12px 20px;
         border-top: 1px solid var(--color-border, #2c2c32);
         display: flex;
         justify-content: flex-end;
         background: var(--color-bg-elevated, #202025);
+        flex-shrink: 0;
       ">
-        <button id="btn-close-changelog" style="
+        <button id="btn-close-changelog" type="button" style="
           background: #22c55e;
           color: #09090b;
           border: none;
-          border-radius: 6px;
-          padding: 8px 18px;
+          border-radius: 8px;
+          padding: 9px 22px;
           font-size: 13px;
           font-weight: 700;
           cursor: pointer;
-          transition: background 0.15s ease;
+          transition: filter 0.15s ease, transform 0.1s ease;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          user-select: none;
         ">
           Got it
         </button>
@@ -395,10 +406,41 @@ export function showChangelogModal(_highlightVersion?: string): void {
 
   document.body.appendChild(backdrop);
 
-  const close = () => backdrop.remove();
-  backdrop.querySelector("#btn-close-changelog-x")?.addEventListener("click", close);
-  backdrop.querySelector("#btn-close-changelog")?.addEventListener("click", close);
+  const close = () => {
+    window.removeEventListener("keydown", onKeyDown);
+    document.querySelectorAll("#sonus-changelog-modal, .sonus-changelog-backdrop").forEach((el) => el.remove());
+    try {
+      const cur = CHANGELOGS[0]?.version;
+      if (cur) localStorage.setItem(STORAGE_KEY, cur);
+    } catch {}
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+
+  const btnX = backdrop.querySelector<HTMLButtonElement>("#btn-close-changelog-x");
+  const btnGotIt = backdrop.querySelector<HTMLButtonElement>("#btn-close-changelog");
+
+  if (btnX) {
+    btnX.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); close(); });
+    btnX.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); close(); });
+  }
+  if (btnGotIt) {
+    btnGotIt.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); close(); });
+    btnGotIt.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); close(); });
+  }
+
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) close();
+    if (e.target === backdrop) {
+      e.preventDefault();
+      close();
+    }
   });
+
+  (window as any).closeChangelog = close;
 }
