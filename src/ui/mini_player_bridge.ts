@@ -65,6 +65,12 @@ export class MiniPlayerBridge {
     }
   }
 
+  public async toggleClickThrough(): Promise<boolean> {
+    const active = await api.toggleMiniPlayerClickThrough().catch(() => false);
+    emit("sonus:overlay-clickthrough", { active }).catch(() => {});
+    return active;
+  }
+
   public syncState(): void {
     const s = this.getState();
     const key = `${s.title}|${s.artist}|${s.isPlaying}|${s.speed}|${s.volume}|${Math.round(s.positionMs / 400)}|${s.durationMs}|${s.coverUrl?.length ?? 0}|${s.bgColor}|${s.isShuffle}|${s.repeatMode}`;

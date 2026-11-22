@@ -307,6 +307,9 @@ export const api = {
   windowFocusMain: () => invoke<void>("window_focus_main"),
   toggleMiniPlayer: () => invoke<void>("toggle_mini_player"),
   setMiniPlayerAlwaysOnTop: (alwaysOnTop: boolean) => invoke<void>("set_mini_player_always_on_top", { alwaysOnTop }),
+  setMiniPlayerClickThrough: (enabled: boolean) => invoke<boolean>("set_mini_player_click_through", { enabled }),
+  toggleMiniPlayerClickThrough: () => invoke<boolean>("toggle_mini_player_click_through"),
+  isMiniPlayerClickThrough: () => invoke<boolean>("is_mini_player_click_through"),
   setMiniPlayerHotkey: (hotkey: string) => invoke<boolean>("set_mini_player_hotkey", { hotkey }),
   trimMemory: () => invoke<void>("trim_memory"),
 

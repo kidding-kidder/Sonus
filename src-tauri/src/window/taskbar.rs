@@ -278,6 +278,8 @@ pub fn init_taskbar_toolbar(window: tauri::WebviewWindow) {
 
     // Register the default mini-player global hotkey (Ctrl+Alt+M)
     super::hotkey::register_default_hotkey(hwnd);
+    // Register the default mini-player click-through global hotkey (Ctrl+Alt+X)
+    super::hotkey::register_default_clickthrough_hotkey(hwnd);
 }
 
 pub fn update_state(is_playing: bool, is_liked: bool) {
@@ -318,13 +320,21 @@ unsafe extern "system" fn taskbar_wndproc(
         return LRESULT(0);
     }
 
-    // Handle global hotkey for mini player (Ctrl+Alt+M or user-configured)
-    if umsg == super::hotkey::WM_HOTKEY && wparam.0 as i32 == super::hotkey::MINI_PLAYER_HOTKEY_ID {
-        let win_opt = STATE.lock().ok().and_then(|lock| lock.as_ref().map(|s| s.window.clone()));
-        if let Some(win) = win_opt {
-            let _ = win.eval("window.__toggleMiniPlayer && window.__toggleMiniPlayer();");
+    // Handle global hotkey for mini player (Ctrl+Alt+M or user-configured) and overlay click-through (Ctrl+Alt+X)
+    if umsg == super::hotkey::WM_HOTKEY {
+        if wparam.0 as i32 == super::hotkey::MINI_PLAYER_HOTKEY_ID {
+            let win_opt = STATE.lock().ok().and_then(|lock| lock.as_ref().map(|s| s.window.clone()));
+            if let Some(win) = win_opt {
+                let _ = win.eval("window.__toggleMiniPlayer && window.__toggleMiniPlayer();");
+            }
+            return LRESULT(0);
+        } else if wparam.0 as i32 == super::hotkey::OVERLAY_CLICKTHROUGH_HOTKEY_ID {
+            let win_opt = STATE.lock().ok().and_then(|lock| lock.as_ref().map(|s| s.window.clone()));
+            if let Some(win) = win_opt {
+                let _ = win.eval("window.__toggleMiniPlayerClickThrough && window.__toggleMiniPlayerClickThrough();");
+            }
+            return LRESULT(0);
         }
-        return LRESULT(0);
     }
 
     if umsg == WM_COMMAND {

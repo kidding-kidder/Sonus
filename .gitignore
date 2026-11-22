@@ -35,6 +35,9 @@ PROGRESS.md
 *.m4a
 *.flac
 *.wav
+*.ogg
+FemClicker/
+game_renderer_bytecode.txt
 *.json
 !package.json
 !tsconfig.json

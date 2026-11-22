@@ -10,9 +10,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.8",
+    version: "v0.1.9",
     date: "Latest Release",
     isLatest: true,
+    newFeatures: [
+      "Crosshair Game Overlay: Converted Mini Player into a true non-activating DirectFlip hardware overlay (similar to Crosshair X).",
+      "Click-Through Game Mode: Press Ctrl+Alt+X or click the Crosshair icon to pass mouse clicks directly through the overlay into your game (for uninterrupted shooting, aiming, and gameplay).",
+      "Translucent Acrylic Glass: Upgraded Mini Player to a hardware-accelerated translucent acrylic card with smooth backdrop blur.",
+    ],
+    fixes: [
+      "Fullscreen Game FPS Drop & Flickering: Eliminated all window focus fights and DirectFlip presentation drops by using Win32 WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, and disabling DWM transitions.",
+      "Zero Focus Stealing: Opening or interacting with the Mini Player no longer minimizes or alt-tabs games out of fullscreen mode.",
+    ],
+  },
+  {
+    version: "v0.1.8",
+    date: "November 2026",
     newFeatures: [
       "Streamlined UI: Fully removed AI chat module and sidebar clutter for a cleaner, faster local music experience.",
     ],

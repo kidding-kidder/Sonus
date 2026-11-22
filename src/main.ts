@@ -108,6 +108,7 @@ class SonusApp {
     this.player.startPolling();
     this.miniPlayer = new MiniPlayerBridge({ getState: () => ({ title: this.player.getCurrentTrack()?.title ?? "Nothing playing", artist: this.player.getCurrentTrack()?.artist ?? "", isPlaying: this.player.state.is_playing, volume: this.player.state.volume, positionMs: this.player.state.position_ms, durationMs: this.player.state.duration_ms, coverUrl: this.player.getCurrentCover(), bgColor: this.settingsManager.state.miniPlayerBgColor, speed: this.player.getCurrentSpeed(), isShuffle: this.player.getIsShuffle?.(), repeatMode: this.player.getRepeatMode?.() }), onCmd: (cmd, val) => { if (cmd === "toggle-play") this.player.togglePlayback(); else if (cmd === "next") this.player.playNext(); else if (cmd === "prev") this.player.playPrev(); else if (cmd === "set-volume" && val !== undefined) this.player.setVolume(val); else if (cmd === "seek-fraction" && val !== undefined) this.player.seekFraction(val); else if (cmd === "set-speed" && val !== undefined) this.player.setSpeed(val); else if (cmd === "toggle-shuffle") this.player.toggleShuffle(); else if (cmd === "cycle-repeat") this.player.cycleRepeat(); } });
     (window as any).__toggleMiniPlayer = () => this.miniPlayer?.toggle();
+    (window as any).__toggleMiniPlayerClickThrough = () => this.miniPlayer?.toggleClickThrough();
     window.addEventListener("sonus:mini-bg", () => this.miniPlayer?.syncState());
 
     listen<UpdateProgress>("sonus:update-progress", (e) => {

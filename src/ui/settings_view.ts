@@ -141,6 +141,10 @@ export class SettingsView {
             <div><div style="font-size:var(--font-size-base);font-weight:var(--font-weight-medium);color:var(--color-text-primary);">Mini Player Always on Top</div><div style="font-size:var(--font-size-xs);color:var(--color-text-muted);">Keep the mini player floating above all other windows (Default: On).</div></div>
             <input id="toggle-mini-aot" type="checkbox" ${this.state.miniPlayerAlwaysOnTop !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--color-accent);cursor:pointer;" />
           </label>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-2) 0;border-top:1px solid var(--color-border-subtle);">
+            <div><div style="font-size:var(--font-size-base);font-weight:var(--font-weight-medium);color:var(--color-text-primary);">Crosshair Game Overlay Mode</div><div style="font-size:var(--font-size-xs);color:var(--color-text-muted);">DirectFlip hardware composition prevents fullscreen FPS drops and focus battles. Press <b>Ctrl+Alt+X</b> or click the crosshair icon to toggle click-through.</div></div>
+            <button id="btn-toggle-clickthrough" class="btn-secondary" style="font-size:var(--font-size-xs);padding:4px 10px;white-space:nowrap;">Toggle Click-Through</button>
+          </div>
         </div>
 
         <!-- Appearance & Theme Section -->
@@ -393,6 +397,9 @@ export class SettingsView {
     });
     const aotCb = this.container.querySelector<HTMLInputElement>("#toggle-mini-aot");
     aotCb?.addEventListener("change", () => this.callbacks.onUpdateSetting("mini_player_always_on_top", aotCb.checked ? "true" : "false"));
+    this.container.querySelector("#btn-toggle-clickthrough")?.addEventListener("click", () => {
+      api.toggleMiniPlayerClickThrough().catch(() => {});
+    });
 
     const toolsBadge = this.container.querySelector<HTMLElement>("#tools-status-badge");
     const reinstallToolsBtn = this.container.querySelector<HTMLButtonElement>("#btn-reinstall-tools");

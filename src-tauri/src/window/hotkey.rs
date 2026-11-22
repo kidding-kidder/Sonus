@@ -10,6 +10,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 pub const WM_HOTKEY: u32 = 0x0312;
 /// Arbitrary unique ID for the mini-player hotkey registration.
 pub const MINI_PLAYER_HOTKEY_ID: i32 = 42;
+/// Arbitrary unique ID for the mini-player click-through / crosshair toggle hotkey registration.
+pub const OVERLAY_CLICKTHROUGH_HOTKEY_ID: i32 = 43;
 
 /// Register the default hotkey: Ctrl+Alt+M.
 pub fn register_default_hotkey(hwnd: HWND) {
@@ -19,6 +21,18 @@ pub fn register_default_hotkey(hwnd: HWND) {
             MINI_PLAYER_HOTKEY_ID,
             MOD_CONTROL | MOD_ALT,
             0x4D, // 'M'
+        );
+    }
+}
+
+/// Register the default click-through hotkey: Ctrl+Alt+X.
+pub fn register_default_clickthrough_hotkey(hwnd: HWND) {
+    unsafe {
+        let _ = RegisterHotKey(
+            Some(hwnd),
+            OVERLAY_CLICKTHROUGH_HOTKEY_ID,
+            MOD_CONTROL | MOD_ALT,
+            0x58, // 'X'
         );
     }
 }

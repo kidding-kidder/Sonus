@@ -33,6 +33,40 @@ let state: MiniState = {
 let isDraggingVol = false;
 let localSpeed = 1.0;
 let lastNonZeroVol = 1.0;
+let isClickThroughActive = false;
+let toastTimeout: number | undefined;
+
+function setClickThroughUi(active: boolean): void {
+  if (isClickThroughActive === active && document.getElementById("btn-crosshair")?.classList.contains("active") === active) {
+    return;
+  }
+  isClickThroughActive = active;
+  const card = document.getElementById("mini-card");
+  const btn = document.getElementById("btn-crosshair");
+  const toast = document.getElementById("game-overlay-toast");
+
+  if (card) card.classList.toggle("click-through", active);
+  if (btn) btn.classList.toggle("active", active);
+
+  if (toast) {
+    if (active) {
+      toast.style.display = "block";
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = window.setTimeout(() => {
+        toast.style.display = "none";
+      }, 4000);
+    } else {
+      toast.style.display = "none";
+      if (toastTimeout) clearTimeout(toastTimeout);
+    }
+  }
+}
+
+async function toggleClickThrough(): Promise<void> {
+  const active = await invoke<boolean>("toggle_mini_player_click_through").catch(() => false);
+  setClickThroughUi(active);
+  emit("sonus:overlay-clickthrough", { active }).catch(() => {});
+}
 
 // ── 4-Bar Equalizer Waveform Badge ──────────────────────────────────────────
 const VIZ_BARS = 4;
@@ -351,6 +385,9 @@ function bindEvents(): void {
   document.getElementById("btn-prev")?.addEventListener("click", () => emit("sonus:cmd", { cmd: "prev" }).catch(() => {}));
   document.getElementById("btn-play")?.addEventListener("click", () => emit("sonus:cmd", { cmd: "toggle-play" }).catch(() => {}));
   document.getElementById("btn-next")?.addEventListener("click", () => emit("sonus:cmd", { cmd: "next" }).catch(() => {}));
+  document.getElementById("btn-crosshair")?.addEventListener("click", () => {
+    toggleClickThrough();
+  });
   document.getElementById("btn-open")?.addEventListener("click", () => invoke("window_focus_main").catch(() => {}));
   document.getElementById("btn-close")?.addEventListener("click", () => {
     emit("sonus:mini-hidden").catch(() => {});
@@ -432,6 +469,16 @@ function init(): void {
   bindEvents();
   updateDom();
   startViz();
+
+  (window as any).__toggleMiniPlayerClickThrough = () => toggleClickThrough();
+
+  listen<{ active: boolean }>("sonus:overlay-clickthrough", (e) => {
+    setClickThroughUi(e.payload.active);
+  }).catch(() => {});
+
+  invoke<boolean>("is_mini_player_click_through")
+    .then((active) => setClickThroughUi(active))
+    .catch(() => {});
 
   listen<MiniState>("sonus:state", (e) => {
     state = e.payload;
