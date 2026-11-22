@@ -42,8 +42,11 @@ pub fn configure_webview_environment() {
             --disable-extensions \
             --disable-default-apps \
             --enable-smooth-scrolling \
-            --disk-cache-size=33554432 \
-            --media-cache-size=33554432";
+            --disk-cache-size=16777216 \
+            --media-cache-size=16777216 \
+            --renderer-process-limit=1 \
+            --enable-low-end-device-mode \
+            --js-flags=--max-old-space-size=96,--optimize-for-size,--expose-gc";
         let combined = if current_args.is_empty() {
             optimize_args.to_string()
         } else {
@@ -102,11 +105,11 @@ pub fn trim_working_set() {
 
 pub fn start_memory_trim_daemon() {
     std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_secs(60));
+        std::thread::sleep(std::time::Duration::from_secs(4));
         trim_working_set();
 
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(300));
+            std::thread::sleep(std::time::Duration::from_secs(20));
             trim_working_set();
         }
     });

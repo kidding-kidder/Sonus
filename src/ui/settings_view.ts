@@ -141,19 +141,6 @@ export class SettingsView {
             <div><div style="font-size:var(--font-size-base);font-weight:var(--font-weight-medium);color:var(--color-text-primary);">Mini Player Always on Top</div><div style="font-size:var(--font-size-xs);color:var(--color-text-muted);">Keep the mini player floating above all other windows (Default: On).</div></div>
             <input id="toggle-mini-aot" type="checkbox" ${this.state.miniPlayerAlwaysOnTop !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--color-accent);cursor:pointer;" />
           </label>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-2) 0;border-top:1px solid var(--color-border-subtle);">
-            <div><div style="font-size:var(--font-size-base);font-weight:var(--font-weight-medium);color:var(--color-text-primary);">Crosshair Game Overlay Mode</div><div style="font-size:var(--font-size-xs);color:var(--color-text-muted);">DirectFlip hardware composition prevents fullscreen FPS drops and focus battles. Press <b>Ctrl+Alt+X</b> or click the crosshair icon to toggle click-through.</div></div>
-            <button id="btn-toggle-clickthrough" class="btn-secondary" style="font-size:var(--font-size-xs);padding:4px 10px;white-space:nowrap;">Toggle Click-Through</button>
-          </div>
-          <div style="padding:var(--space-2) 0;border-top:1px solid var(--color-border-subtle);">
-            <div style="font-size:var(--font-size-base);font-weight:var(--font-weight-medium);color:var(--color-text-primary);display:flex;align-items:center;gap:6px;">
-              <span>Xbox Game Bar (Win + G) In-Game Overlay</span>
-              <span style="font-size:10px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 6px;border-radius:4px;font-weight:600;">Hardware Native</span>
-            </div>
-            <div style="font-size:var(--font-size-xs);color:var(--color-text-muted);margin-top:4px;line-height:1.4;">
-              For 100% lag-free overlay in <b>Exclusive Fullscreen games</b> (like CS2, Valorant, Apex): Press <kbd style="background:var(--color-bg-base);border:1px solid var(--color-border);padding:1px 5px;border-radius:3px;font-family:var(--font-family-mono);">Win + G</kbd>, open the <b>Audio</b> widget, find <b>Sonus</b>, and click the <b>Pin (📌)</b> icon. Windows renders it directly inside the game with zero FPS drop.
-            </div>
-          </div>
         </div>
 
         <!-- Appearance & Theme Section -->
@@ -398,13 +385,7 @@ export class SettingsView {
       document.addEventListener("keydown", onKey, true);
     };
     recordBtn?.addEventListener("click", startRecording);
-    this.container.querySelector("#btn-test-mini")?.addEventListener("click", () => {
-      if ((window as any).__toggleMiniPlayer) {
-        (window as any).__toggleMiniPlayer();
-      } else {
-        api.toggleMiniPlayer().catch(() => {});
-      }
-    });
+    this.container.querySelector("#btn-test-mini")?.addEventListener("click", () => api.toggleMiniPlayer().catch(() => {}));
     const miniBgPicker = this.container.querySelector<HTMLInputElement>("#picker-mini-bg");
     miniBgPicker?.addEventListener("input", () => { this.state.miniPlayerBgColor = miniBgPicker.value; this.callbacks.onUpdateSetting("mini_player_bg_color", miniBgPicker.value); });
     this.container.querySelector("#btn-reset-mini-bg")?.addEventListener("click", () => {
@@ -412,13 +393,6 @@ export class SettingsView {
     });
     const aotCb = this.container.querySelector<HTMLInputElement>("#toggle-mini-aot");
     aotCb?.addEventListener("change", () => this.callbacks.onUpdateSetting("mini_player_always_on_top", aotCb.checked ? "true" : "false"));
-    this.container.querySelector("#btn-toggle-clickthrough")?.addEventListener("click", () => {
-      if ((window as any).__toggleMiniPlayerClickThrough) {
-        (window as any).__toggleMiniPlayerClickThrough();
-      } else {
-        api.toggleMiniPlayerClickThrough().catch(() => {});
-      }
-    });
 
     const toolsBadge = this.container.querySelector<HTMLElement>("#tools-status-badge");
     const reinstallToolsBtn = this.container.querySelector<HTMLButtonElement>("#btn-reinstall-tools");

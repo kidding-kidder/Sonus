@@ -33,42 +33,6 @@ let state: MiniState = {
 let isDraggingVol = false;
 let localSpeed = 1.0;
 let lastNonZeroVol = 1.0;
-let isClickThroughActive = false;
-let toastTimeout: number | undefined;
-let lastStateReceiveTime = Date.now();
-let lastKnownPositionMs = 0;
-
-function setClickThroughUi(active: boolean): void {
-  if (isClickThroughActive === active && document.getElementById("btn-crosshair")?.classList.contains("active") === active) {
-    return;
-  }
-  isClickThroughActive = active;
-  const card = document.getElementById("mini-card");
-  const btn = document.getElementById("btn-crosshair");
-  const toast = document.getElementById("game-overlay-toast");
-
-  if (card) card.classList.toggle("click-through", active);
-  if (btn) btn.classList.toggle("active", active);
-
-  if (toast) {
-    if (active) {
-      toast.style.display = "block";
-      if (toastTimeout) clearTimeout(toastTimeout);
-      toastTimeout = window.setTimeout(() => {
-        toast.style.display = "none";
-      }, 4000);
-    } else {
-      toast.style.display = "none";
-      if (toastTimeout) clearTimeout(toastTimeout);
-    }
-  }
-}
-
-async function toggleClickThrough(): Promise<void> {
-  const active = await invoke<boolean>("toggle_mini_player_click_through").catch(() => false);
-  setClickThroughUi(active);
-  emit("sonus:overlay-clickthrough", { active }).catch(() => {});
-}
 
 // ── 4-Bar Equalizer Waveform Badge ──────────────────────────────────────────
 const VIZ_BARS = 4;
@@ -258,33 +222,8 @@ function refreshMarquees(): void {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function fmt(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const hrs = Math.floor(totalSec / 3600);
-  const mins = Math.floor((totalSec % 3600) / 60);
-  const secs = totalSec % 60;
-  if (hrs > 0) {
-    return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  }
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
-function getCurrentPositionMs(): number {
-  if (!state.isPlaying) return lastKnownPositionMs;
-  const elapsed = (Date.now() - lastStateReceiveTime) * (localSpeed || 1.0);
-  const dur = state.durationMs > 0 ? state.durationMs : Infinity;
-  return Math.min(dur, Math.max(0, lastKnownPositionMs + elapsed));
-}
-
-function updateTimelineDisplay(): void {
-  const curMs = getCurrentPositionMs();
-  const timeCurr = document.getElementById("time-curr");
-  const timeTotal = document.getElementById("time-total");
-  if (timeCurr) timeCurr.textContent = fmt(curMs);
-  if (timeTotal) timeTotal.textContent = fmt(state.durationMs);
-
-  const fill = document.getElementById("progress-fill");
-  const pct = state.durationMs > 0 ? Math.min(100, Math.max(0, (curMs / state.durationMs) * 100)) : 0;
-  if (fill) fill.style.width = `${pct}%`;
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 function clampSpeed(s: number): number {
@@ -387,8 +326,15 @@ function updateDom(): void {
     if (state.volume > 0.02) lastNonZeroVol = state.volume;
   }
 
-  // Timestamps & Progress (interpolated real-time position)
-  updateTimelineDisplay();
+  // Timestamps & Progress
+  const timeCurr = document.getElementById("time-curr");
+  const timeTotal = document.getElementById("time-total");
+  if (timeCurr) timeCurr.textContent = fmt(state.positionMs);
+  if (timeTotal) timeTotal.textContent = fmt(state.durationMs);
+
+  const fill = document.getElementById("progress-fill");
+  const pct = state.durationMs > 0 ? Math.min(1, state.positionMs / state.durationMs) * 100 : 0;
+  if (fill) fill.style.width = `${pct}%`;
 }
 
 function updateSpeedLabel(): void {
@@ -402,34 +348,9 @@ function bindEvents(): void {
     if (e.button === 0) invoke("window_start_dragging").catch(() => {});
   });
 
-  document.getElementById("btn-prev")?.addEventListener("click", () => {
-    lastKnownPositionMs = 0;
-    lastStateReceiveTime = Date.now();
-    updateTimelineDisplay();
-    emit("sonus:cmd", { cmd: "prev" }).catch(() => {});
-  });
-  document.getElementById("btn-play")?.addEventListener("click", () => {
-    if (state.isPlaying) {
-      lastKnownPositionMs = getCurrentPositionMs();
-      lastStateReceiveTime = Date.now();
-      state.isPlaying = false;
-    } else {
-      lastStateReceiveTime = Date.now();
-      state.isPlaying = true;
-    }
-    updateDom();
-    if (state.isPlaying) startViz();
-    emit("sonus:cmd", { cmd: "toggle-play" }).catch(() => {});
-  });
-  document.getElementById("btn-next")?.addEventListener("click", () => {
-    lastKnownPositionMs = 0;
-    lastStateReceiveTime = Date.now();
-    updateTimelineDisplay();
-    emit("sonus:cmd", { cmd: "next" }).catch(() => {});
-  });
-  document.getElementById("btn-crosshair")?.addEventListener("click", () => {
-    toggleClickThrough();
-  });
+  document.getElementById("btn-prev")?.addEventListener("click", () => emit("sonus:cmd", { cmd: "prev" }).catch(() => {}));
+  document.getElementById("btn-play")?.addEventListener("click", () => emit("sonus:cmd", { cmd: "toggle-play" }).catch(() => {}));
+  document.getElementById("btn-next")?.addEventListener("click", () => emit("sonus:cmd", { cmd: "next" }).catch(() => {}));
   document.getElementById("btn-open")?.addEventListener("click", () => invoke("window_focus_main").catch(() => {}));
   document.getElementById("btn-close")?.addEventListener("click", () => {
     emit("sonus:mini-hidden").catch(() => {});
@@ -442,8 +363,6 @@ function bindEvents(): void {
   // Interactive Speed Chip
   const speedPresets = [0.8, 1.0, 1.1, 1.25, 1.5, 2.0];
   const applySpeed = (s: number) => {
-    lastKnownPositionMs = getCurrentPositionMs();
-    lastStateReceiveTime = Date.now();
     localSpeed = clampSpeed(s);
     updateSpeedLabel();
     emit("sonus:cmd", { cmd: "set-speed", value: localSpeed }).catch(() => {});
@@ -494,12 +413,8 @@ function bindEvents(): void {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       if (vizRafId) { cancelAnimationFrame(vizRafId); vizRafId = 0; }
-    } else {
-      emit("sonus:cmd", { cmd: "request-state" }).catch(() => {});
-      updateTimelineDisplay();
-      if (state.isPlaying) {
-        startViz();
-      }
+    } else if (state.isPlaying) {
+      startViz();
     }
   });
 
@@ -508,11 +423,6 @@ function bindEvents(): void {
     const bar = e.currentTarget as HTMLElement;
     const rect = bar.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    if (state.durationMs > 0) {
-      lastKnownPositionMs = frac * state.durationMs;
-      lastStateReceiveTime = Date.now();
-      updateTimelineDisplay();
-    }
     emit("sonus:cmd", { cmd: "seek-fraction", value: frac }).catch(() => {});
   });
 }
@@ -523,27 +433,8 @@ function init(): void {
   updateDom();
   startViz();
 
-  // Smooth real-time timeline clock (continuous time & progress bar)
-  window.setInterval(() => {
-    if (state.isPlaying && !document.hidden) {
-      updateTimelineDisplay();
-    }
-  }, 200);
-
-  (window as any).__toggleMiniPlayerClickThrough = () => toggleClickThrough();
-
-  listen<{ active: boolean }>("sonus:overlay-clickthrough", (e) => {
-    setClickThroughUi(e.payload.active);
-  }).catch(() => {});
-
-  invoke<boolean>("is_mini_player_click_through")
-    .then((active) => setClickThroughUi(active))
-    .catch(() => {});
-
   listen<MiniState>("sonus:state", (e) => {
     state = e.payload;
-    lastKnownPositionMs = state.positionMs;
-    lastStateReceiveTime = Date.now();
     updateDom();
   }).catch((err) => console.error("Mini listen error:", err));
 

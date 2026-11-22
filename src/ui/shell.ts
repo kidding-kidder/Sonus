@@ -286,13 +286,7 @@ export class AppShell {
     on(".track-cover-thumb", toggleNp); on(".track-metadata", toggleNp); on("#btn-toggle-panel", toggleNp);
     on("#btn-play-pause", () => this.callbacks.onTogglePlay()); on("#btn-next", () => this.callbacks.onNext()); on("#btn-prev", () => this.callbacks.onPrev());
     on("#btn-shuffle", () => this.callbacks.onToggleShuffle?.()); on("#btn-repeat", () => this.callbacks.onCycleRepeat?.()); on("#btn-toggle-queue", () => this.callbacks.onToggleQueue?.());
-    on("#btn-open-miniplayer", () => {
-      if ((window as any).__toggleMiniPlayer) {
-        (window as any).__toggleMiniPlayer();
-      } else {
-        api.toggleMiniPlayer().catch(() => {});
-      }
-    });
+    on("#btn-open-miniplayer", () => api.toggleMiniPlayer().catch(() => {}));
 
     const progressContainer = this.container.querySelector<HTMLElement>("#progress-container");
     if (progressContainer) {

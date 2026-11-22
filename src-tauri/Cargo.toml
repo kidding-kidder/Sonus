@@ -1,6 +1,6 @@
 [package]
 name = "sonus"
-version = "0.1.9"
+version = "0.1.10"
 description = "Local-first desktop music player and downloader"
 edition = "2021"
 
@@ -35,7 +35,6 @@ features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Controls",
     "Win32_Graphics_Gdi",
-    "Win32_Graphics_Dwm",
     "Win32_System_Com",
 ]
 

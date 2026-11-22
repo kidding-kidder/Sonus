@@ -13,7 +13,7 @@ mod window;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tracing::info;
 
 fn resolve_paths<R: tauri::Runtime>(
@@ -144,40 +144,15 @@ fn window_focus_main(app: tauri::AppHandle) {
 fn toggle_mini_player(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("mini-player") {
         if win.is_visible().unwrap_or(false) {
-            #[cfg(target_os = "windows")]
-            if let Ok(hwnd) = win.hwnd() {
-                window::overlay::hide_overlay(hwnd);
-            } else {
-                let _ = win.hide();
-            }
-            #[cfg(not(target_os = "windows"))]
             let _ = win.hide();
-            let _ = app.emit("sonus:mini-hidden", ());
         } else {
-            #[cfg(target_os = "windows")]
-            if let Ok(hwnd) = win.hwnd() {
-                window::overlay::setup_overlay_window(hwnd, window::overlay::is_click_through());
-                window::overlay::show_overlay_no_activate(hwnd);
-            } else {
-                let _ = win.show();
-            }
-            #[cfg(not(target_os = "windows"))]
             let _ = win.show();
-            let _ = app.emit("sonus:mini-shown", ());
+            let _ = win.set_focus();
         }
     } else if let Ok(win) = tauri::WebviewWindowBuilder::new(&app, "mini-player", tauri::WebviewUrl::App("mini.html".into()))
-        .title("Sonus Mini Player").inner_size(348.0, 136.0).resizable(false).decorations(false).transparent(true).always_on_top(true).skip_taskbar(true).focused(false).build()
+        .title("Sonus Mini Player").inner_size(320.0, 112.0).resizable(false).decorations(false).always_on_top(true).skip_taskbar(true).focused(true).build()
     {
-        #[cfg(target_os = "windows")]
-        if let Ok(hwnd) = win.hwnd() {
-            window::overlay::setup_overlay_window(hwnd, false);
-            window::overlay::show_overlay_no_activate(hwnd);
-        } else {
-            let _ = win.show();
-        }
-        #[cfg(not(target_os = "windows"))]
         let _ = win.show();
-        let _ = app.emit("sonus:mini-shown", ());
     }
 }
 
@@ -185,54 +160,6 @@ fn toggle_mini_player(app: tauri::AppHandle) {
 fn set_mini_player_always_on_top(always_on_top: bool, app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("mini-player") {
         let _ = win.set_always_on_top(always_on_top);
-    }
-}
-
-#[tauri::command]
-fn set_mini_player_click_through(enabled: bool, app: tauri::AppHandle) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(win) = app.get_webview_window("mini-player") {
-            if let Ok(hwnd) = win.hwnd() {
-                window::overlay::set_overlay_click_through(hwnd, enabled);
-            }
-        }
-        enabled
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (enabled, app);
-        false
-    }
-}
-
-#[tauri::command]
-fn toggle_mini_player_click_through(app: tauri::AppHandle) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(win) = app.get_webview_window("mini-player") {
-            if let Ok(hwnd) = win.hwnd() {
-                return window::overlay::toggle_overlay_click_through(hwnd);
-            }
-        }
-        window::overlay::is_click_through()
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        false
-    }
-}
-
-#[tauri::command]
-fn is_mini_player_click_through() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        window::overlay::is_click_through()
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        false
     }
 }
 
@@ -393,12 +320,6 @@ fn main() {
                     let _ = main_win.maximize();
                     window::taskbar::init_taskbar_toolbar(main_win);
                 }
-                #[cfg(target_os = "windows")]
-                if let Some(mini_win) = app.get_webview_window("mini-player") {
-                    if let Ok(hwnd) = mini_win.hwnd() {
-                        window::overlay::setup_overlay_window(hwnd, false);
-                    }
-                }
                 window::optimizer::start_memory_trim_daemon();
 
                 // Silently bootstrap external download tools (yt-dlp, ffmpeg) in background if missing
@@ -477,9 +398,6 @@ fn main() {
             window_focus_main,
             toggle_mini_player,
             set_mini_player_always_on_top,
-            set_mini_player_click_through,
-            toggle_mini_player_click_through,
-            is_mini_player_click_through,
             update_taskbar_state,
             update_discord_presence,
             clear_discord_presence,

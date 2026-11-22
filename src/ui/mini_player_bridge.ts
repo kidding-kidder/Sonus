@@ -21,7 +21,6 @@ export type MiniCmdHandler = (cmd: string, value?: number) => void;
 export class MiniPlayerBridge {
   private unlisten: (() => void) | null = null;
   private unlistenHidden: (() => void) | null = null;
-  private unlistenShown: (() => void) | null = null;
   private getState: () => MiniPlayerState;
   private onCmd: MiniCmdHandler;
   private timer: number | undefined;
@@ -44,40 +43,31 @@ export class MiniPlayerBridge {
       setTimeout(() => this.syncState(), 60);
     }).then((fn) => { this.unlisten = fn; });
 
-    listen("sonus:mini-shown", () => {
-      this.isMiniOpen = true;
-      this.lastSentKey = "";
-      this.syncState();
-    }).then((fn) => { this.unlistenShown = fn; });
-
     listen("sonus:mini-hidden", () => {
       this.isMiniOpen = false;
     }).then((fn) => { this.unlistenHidden = fn; });
 
-    // Periodic sync: broadcast when playing or open
+    // Zero-overhead polling: Only broadcast when mini player is actually open on screen
     this.timer = window.setInterval(() => {
-      this.syncState();
-    }, 350);
+      if (this.isMiniOpen) {
+        this.syncState();
+      }
+    }, 450);
   }
 
   public async toggle(): Promise<void> {
     this.isMiniOpen = !this.isMiniOpen;
     await api.toggleMiniPlayer().catch(() => {});
     this.lastSentKey = "";
-    this.syncState();
-    setTimeout(() => { this.lastSentKey = ""; this.syncState(); }, 80);
-    setTimeout(() => { this.lastSentKey = ""; this.syncState(); }, 300);
-  }
-
-  public async toggleClickThrough(): Promise<boolean> {
-    const active = await api.toggleMiniPlayerClickThrough().catch(() => false);
-    emit("sonus:overlay-clickthrough", { active }).catch(() => {});
-    return active;
+    if (this.isMiniOpen) {
+      setTimeout(() => this.syncState(), 100);
+      setTimeout(() => this.syncState(), 400);
+    }
   }
 
   public syncState(): void {
     const s = this.getState();
-    const key = `${s.title}|${s.artist}|${s.isPlaying}|${s.speed}|${s.volume}|${Math.round(s.positionMs / 250)}|${s.durationMs}|${s.coverUrl?.length ?? 0}|${s.bgColor}|${s.isShuffle}|${s.repeatMode}`;
+    const key = `${s.title}|${s.artist}|${s.isPlaying}|${s.speed}|${s.volume}|${Math.round(s.positionMs / 400)}|${s.durationMs}|${s.coverUrl?.length ?? 0}|${s.bgColor}|${s.isShuffle}|${s.repeatMode}`;
     if (key === this.lastSentKey) return;
     this.lastSentKey = key;
     emit("sonus:state", s).catch(() => {});
@@ -86,7 +76,6 @@ export class MiniPlayerBridge {
   public destroy(): void {
     this.unlisten?.();
     this.unlistenHidden?.();
-    this.unlistenShown?.();
     if (this.timer) window.clearInterval(this.timer);
   }
 }
