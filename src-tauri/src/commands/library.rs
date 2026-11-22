@@ -274,15 +274,6 @@ pub fn get_track_lyrics(track_id: i64, db: State<'_, DbPool>) -> Result<Option<S
         }
     }
 
-    if let Some(parent) = audio_path.parent() {
-        let generic_lrc = parent.join("lyrics.lrc");
-        if generic_lrc.exists() {
-            if let Ok(content) = std::fs::read_to_string(&generic_lrc) {
-                return Ok(Some(content));
-            }
-        }
-    }
-
     Ok(None)
 }
 

@@ -133,6 +133,80 @@ export class NowPlayingPanel {
     }
   }
 
+  private normalizeForMatch(str: string): string {
+    return (str || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/['"’`]/g, "")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  }
+
+  private getTokens(normalized: string): string[] {
+    const noise = new Set([
+      "the", "a", "an", "and", "or", "feat", "ft", "featuring",
+      "with", "prod", "produced", "by", "remix", "version", "edit",
+      "official", "audio", "video", "visualizer", "hd", "hq", "4k", "ost"
+    ]);
+    return normalized
+      .split(/\s+/)
+      .filter((w) => w.length > 0 && !noise.has(w));
+  }
+
+  private matchArtist(targetArtist: string, candidateArtist: string): boolean {
+    const normTarget = this.normalizeForMatch(targetArtist);
+    const normCand = this.normalizeForMatch(candidateArtist);
+
+    if (!normTarget || normTarget === "unknown artist" || normTarget === "unknown") {
+      return true;
+    }
+    if (!normCand) return false;
+    if (normTarget === normCand) return true;
+
+    if (normCand.includes(normTarget) || normTarget.includes(normCand)) return true;
+
+    const targetTokens = this.getTokens(normTarget);
+    const candTokens = this.getTokens(normCand);
+    if (targetTokens.length === 0 || candTokens.length === 0) {
+      return normTarget === normCand;
+    }
+
+    const intersection = targetTokens.filter((t) => candTokens.includes(t));
+    const minLen = Math.min(targetTokens.length, candTokens.length);
+    return intersection.length > 0 && (intersection.length / minLen >= 0.5);
+  }
+
+  private matchTitle(targetTitle: string, candidateTitle: string): boolean {
+    const normTarget = this.normalizeForMatch(targetTitle);
+    const normCand = this.normalizeForMatch(candidateTitle);
+
+    // If target title has NO alphanumeric characters (e.g. '♪ ☊♪☊ ♪☊ ♪♪ ☊ ♪☊ ♪')
+    if (!normTarget) {
+      const rawTarget = targetTitle.trim().toLowerCase();
+      const rawCand = (candidateTitle || "").trim().toLowerCase();
+      return rawTarget.length > 0 && rawTarget === rawCand;
+    }
+
+    if (!normCand) return false;
+    if (normTarget === normCand) return true;
+
+    if (normCand.startsWith(normTarget) || normTarget.startsWith(normCand)) return true;
+    if (normCand.includes(normTarget) || normTarget.includes(normCand)) return true;
+
+    const targetTokens = this.getTokens(normTarget);
+    const candTokens = this.getTokens(normCand);
+    if (targetTokens.length === 0) return false;
+
+    const intersection = targetTokens.filter((t) => candTokens.includes(t));
+    const minLen = Math.min(targetTokens.length, candTokens.length);
+    return intersection.length >= 1 && (intersection.length / minLen >= 0.6);
+  }
+
+  private isInstrumentalHint(text: string): boolean {
+    return /\b(instrumental|karaoke|backing track|no vocals|off vocal)\b/i.test(text);
+  }
+
   private async fetchLyrics(track: TrackItem, forceRemote: boolean = false): Promise<void> {
     const trackId = track.id;
     this.isLyricsLoading = true;
@@ -150,43 +224,134 @@ export class NowPlayingPanel {
         }
       }
 
-      const clean = this.cleanMetadata(track.title, track.artist), targetSec = Math.max(1, Math.round(track.duration_ms / 1000));
-      let res = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(clean.artist)}&track_name=${encodeURIComponent(clean.title)}&duration=${targetSec}`);
+      // If track metadata indicates it is an instrumental / karaoke track, skip remote lyric fetching
+      if (this.isInstrumentalHint(track.title) || this.isInstrumentalHint(track.artist)) {
+        this.lyrics = [];
+        return;
+      }
+
+      const clean = this.cleanMetadata(track.title, track.artist);
+      const targetSec = Math.max(1, Math.round(track.duration_ms / 1000));
+      const isSlowed = /slowed/i.test(track.title) || /slowed/i.test(track.path || "");
+
+      // 1. Try exact match from LRCLIB (/api/get)
+      try {
+        const getUrl = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(clean.artist)}&track_name=${encodeURIComponent(clean.title)}&duration=${targetSec}`;
+        const res = await fetch(getUrl);
+        if (this.lyricsTrackId !== trackId || this.currentTrack?.id !== trackId) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data) {
+            const artistOk = this.matchArtist(clean.artist, data.artistName);
+            const titleOk = this.matchTitle(clean.title, data.trackName);
+            if (artistOk && titleOk) {
+              if (data.instrumental) {
+                this.lyrics = [];
+                return;
+              }
+              if (data.syncedLyrics && Math.abs((data.duration || targetSec) - targetSec) <= 15) {
+                this.lyrics = this.parseLrc(data.syncedLyrics);
+                api.saveTrackLyrics(track.id, data.syncedLyrics).catch(() => {});
+                return;
+              } else if (data.plainLyrics) {
+                this.lyrics = this.autoSyncPlainLyrics(data.plainLyrics, track.duration_ms);
+                return;
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 2. Query LRCLIB search (/api/search)
+      const hasAlphanumericTitle = this.normalizeForMatch(clean.title).length > 0;
+      let candidates: any[] = [];
+
+      try {
+        // Try structured parameters first
+        const searchUrl = `https://lrclib.net/api/search?track_name=${encodeURIComponent(clean.title)}&artist_name=${encodeURIComponent(clean.artist)}`;
+        let sRes = await fetch(searchUrl);
+        if (this.lyricsTrackId !== trackId || this.currentTrack?.id !== trackId) return;
+        if (sRes.ok) {
+          const data = await sRes.json();
+          if (Array.isArray(data) && data.length > 0) candidates = data;
+        }
+
+        // Only fallback to broad query if title has actual words/letters and structured search had no hits
+        if (candidates.length === 0 && hasAlphanumericTitle) {
+          const qUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(clean.artist + " " + clean.title)}`;
+          sRes = await fetch(qUrl);
+          if (this.lyricsTrackId !== trackId || this.currentTrack?.id !== trackId) return;
+          if (sRes.ok) {
+            const data = await sRes.json();
+            if (Array.isArray(data) && data.length > 0) candidates = data;
+          }
+        }
+      } catch {}
+
       if (this.lyricsTrackId !== trackId || this.currentTrack?.id !== trackId) return;
-      if (res.ok) {
-        const data = await res.json();
-        if (this.lyricsTrackId === trackId && data.syncedLyrics && Math.abs((data.duration || targetSec) - targetSec) <= 8) {
-          this.lyrics = this.parseLrc(data.syncedLyrics); api.saveTrackLyrics(track.id, data.syncedLyrics).catch(() => {}); return;
+
+      // Filter candidates with strict artist, title, and duration matching
+      const validMatches = candidates.filter((item: any) => {
+        if (!item) return false;
+        const aOk = this.matchArtist(clean.artist, item.artistName);
+        const tOk = this.matchTitle(clean.title, item.trackName);
+        if (!aOk || !tOk) return false;
+        if (isSlowed) {
+          const scale = item.duration && targetSec > 10 ? targetSec / item.duration : 1;
+          return scale >= 0.6 && scale <= 1.8;
+        }
+        return Math.abs((item.duration || targetSec) - targetSec) <= 30;
+      });
+
+      if (validMatches.length > 0) {
+        // If the best match is explicitly instrumental with no lyrics
+        const matchedInstrumental = validMatches.find((i: any) => i.instrumental && !i.syncedLyrics && !i.plainLyrics);
+        if (matchedInstrumental) {
+          this.lyrics = [];
+          return;
+        }
+
+        // Prioritize synced lyrics, sorted by closest duration
+        const synced = validMatches
+          .filter((i: any) => Boolean(i.syncedLyrics))
+          .sort((a: any, b: any) => Math.abs((a.duration || 0) - targetSec) - Math.abs((b.duration || 0) - targetSec));
+
+        if (synced.length > 0) {
+          const best = synced[0];
+          this.lyrics = this.parseLrc(best.syncedLyrics);
+          if (isSlowed && best.duration && targetSec > 10) {
+            const scale = targetSec / best.duration;
+            if (scale > 0.6 && scale < 1.8 && Math.abs(scale - 1.0) >= 0.05) {
+              this.lyrics.forEach((l) => { l.timeMs = Math.round(l.timeMs * scale); });
+            }
+          }
+          if (Math.abs((best.duration || targetSec) - targetSec) <= 15) {
+            api.saveTrackLyrics(track.id, best.syncedLyrics).catch(() => {});
+          }
+          return;
+        }
+
+        // Fallback to plain lyrics only for verified matching songs
+        const plain = validMatches.filter((i: any) => Boolean(i.plainLyrics));
+        if (plain.length > 0) {
+          this.lyrics = this.autoSyncPlainLyrics(plain[0].plainLyrics, track.duration_ms);
+          return;
         }
       }
 
-      res = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(clean.artist + " " + clean.title)}`);
-      if (this.lyricsTrackId !== trackId || this.currentTrack?.id !== trackId) return;
-      if (res.ok) {
-        const list = await res.json();
-        if (this.lyricsTrackId === trackId && Array.isArray(list) && list.length > 0) {
-          const synced = list.filter((i: any) => Boolean(i.syncedLyrics)).sort((a: any, b: any) => Math.abs((a.duration || 0) - targetSec) - Math.abs((b.duration || 0) - targetSec));
-          const best = synced[0] || list[0];
-          if (best?.syncedLyrics) {
-            this.lyrics = this.parseLrc(best.syncedLyrics);
-            const isSlowed = /slowed/i.test(track.title) || /slowed/i.test(track.path || "");
-            if (isSlowed && best.duration && targetSec > 10) {
-              const scale = targetSec / best.duration;
-              if (scale > 0.6 && scale < 1.6 && Math.abs(scale - 1.0) >= 0.05) {
-                this.lyrics.forEach((l) => { l.timeMs = Math.round(l.timeMs * scale); });
-              }
+      // 3. Fallback to lyrics.ovh ONLY if artist and title are well-formed alphanumeric strings
+      if (hasAlphanumericTitle && this.normalizeForMatch(clean.artist).length >= 2 && clean.artist !== "Unknown Artist") {
+        try {
+          const ovh = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(clean.artist)}/${encodeURIComponent(clean.title)}`);
+          if (this.lyricsTrackId === trackId && ovh.ok) {
+            const d = await ovh.json();
+            if (d?.lyrics) {
+              this.lyrics = this.autoSyncPlainLyrics(d.lyrics, track.duration_ms);
+              return;
             }
-            if (Math.abs((best.duration || targetSec) - targetSec) <= 15) api.saveTrackLyrics(track.id, best.syncedLyrics).catch(() => {});
-            return;
-          } else if (best?.plainLyrics) { this.lyrics = this.autoSyncPlainLyrics(best.plainLyrics, track.duration_ms); return; }
-        }
+          }
+        } catch {}
       }
-      try {
-        const ovh = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(clean.artist)}/${encodeURIComponent(clean.title)}`);
-        if (this.lyricsTrackId === trackId && ovh.ok) {
-          const d = await ovh.json(); if (d.lyrics) this.lyrics = this.autoSyncPlainLyrics(d.lyrics, track.duration_ms);
-        }
-      } catch {}
     } catch {
       // Offline fallback
     } finally {
@@ -207,11 +372,12 @@ export class NowPlayingPanel {
       }
     }
     title = title
-      .replace(/^[\d\s.-]+/, "")
+      .replace(/^(\d{1,3}[\s.-]+)+(?=[^\d\s.-])/, "")
       .replace(/\s*-[a-zA-Z0-9_-]{11}$/, "")
       .replace(/\s*\*.*?\*/g, "")
       .replace(/\s*[\(\[](?:official\s*)?(?:music\s*)?(?:video|audio|visualizer|lyrics?|lyric|remastered|hd|hq|4k|feat\..*?|ft\..*?)[\)\]]/gi, "")
       .trim();
+    artist = artist.replace(/^(\d{1,3}[\s.-]+)+(?=[^\d\s.-])/, "").trim();
     return { title: title || rawTitle, artist: artist || rawArtist };
   }
 
