@@ -398,7 +398,13 @@ export class SettingsView {
       document.addEventListener("keydown", onKey, true);
     };
     recordBtn?.addEventListener("click", startRecording);
-    this.container.querySelector("#btn-test-mini")?.addEventListener("click", () => api.toggleMiniPlayer().catch(() => {}));
+    this.container.querySelector("#btn-test-mini")?.addEventListener("click", () => {
+      if ((window as any).__toggleMiniPlayer) {
+        (window as any).__toggleMiniPlayer();
+      } else {
+        api.toggleMiniPlayer().catch(() => {});
+      }
+    });
     const miniBgPicker = this.container.querySelector<HTMLInputElement>("#picker-mini-bg");
     miniBgPicker?.addEventListener("input", () => { this.state.miniPlayerBgColor = miniBgPicker.value; this.callbacks.onUpdateSetting("mini_player_bg_color", miniBgPicker.value); });
     this.container.querySelector("#btn-reset-mini-bg")?.addEventListener("click", () => {
@@ -407,7 +413,11 @@ export class SettingsView {
     const aotCb = this.container.querySelector<HTMLInputElement>("#toggle-mini-aot");
     aotCb?.addEventListener("change", () => this.callbacks.onUpdateSetting("mini_player_always_on_top", aotCb.checked ? "true" : "false"));
     this.container.querySelector("#btn-toggle-clickthrough")?.addEventListener("click", () => {
-      api.toggleMiniPlayerClickThrough().catch(() => {});
+      if ((window as any).__toggleMiniPlayerClickThrough) {
+        (window as any).__toggleMiniPlayerClickThrough();
+      } else {
+        api.toggleMiniPlayerClickThrough().catch(() => {});
+      }
     });
 
     const toolsBadge = this.container.querySelector<HTMLElement>("#tools-status-badge");

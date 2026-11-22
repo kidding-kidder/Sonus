@@ -24,6 +24,7 @@ export class PlaybackController {
   private isShuffle: boolean = false; private repeatMode: "off" | "all" | "one" = "off"; private toggleLockUntil: number = 0;
   private currentSpeed: number = 1.0;
   private onStateChange?: (trackId: number | null, isPlaying: boolean) => void;
+  private onPositionChange?: (positionMs: number, durationMs: number) => void;
   private currentCoverUrl: string | null = null;
   public getCurrentCover(): string | null { return this.currentCoverUrl; }
 
@@ -36,9 +37,12 @@ export class PlaybackController {
     getCurrentPlaylistName: () => string,
     getActivePlaylistId?: () => number | undefined,
     onStateChange?: (trackId: number | null, isPlaying: boolean) => void,
+    onPositionChange?: (positionMs: number, durationMs: number) => void,
   ) {
     this.shell = shell; this.nowPlayingPanel = nowPlayingPanel; this.getTracks = getTracks;
-    this.getCurrentPlaylistName = getCurrentPlaylistName; this.getActivePlaylistId = getActivePlaylistId; this.onStateChange = onStateChange;
+    this.getCurrentPlaylistName = getCurrentPlaylistName; this.getActivePlaylistId = getActivePlaylistId;
+    this.onStateChange = onStateChange;
+    this.onPositionChange = onPositionChange;
     window.addEventListener("sonus:pause-main", () => this.pause());
   }
 
@@ -348,7 +352,7 @@ export class PlaybackController {
       if (!this.currentTrack || (!this.state.is_playing && this.isPausedByUser)) {
         delay = document.hidden ? 3000 : 2000;
       } else if (document.hidden) {
-        delay = 1200;
+        delay = this.state.is_playing ? 500 : 2000;
       }
       window.setTimeout(tick, delay);
     };
@@ -381,6 +385,7 @@ export class PlaybackController {
             if (!document.hidden) {
               this.shell.updatePlaybackVisual(this.currentTrack.title, this.currentTrack.artist, remote.is_playing, remote.position_ms, remote.duration_ms);
             }
+            this.onPositionChange?.(remote.position_ms, remote.duration_ms);
           }
 
           const activeContext = this.getActivePlaylistId?.() !== undefined ? this.getCurrentPlaylistName() : undefined;

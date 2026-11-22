@@ -13,7 +13,7 @@ mod window;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tracing::info;
 
 fn resolve_paths<R: tauri::Runtime>(
@@ -152,6 +152,7 @@ fn toggle_mini_player(app: tauri::AppHandle) {
             }
             #[cfg(not(target_os = "windows"))]
             let _ = win.hide();
+            let _ = app.emit("sonus:mini-hidden", ());
         } else {
             #[cfg(target_os = "windows")]
             if let Ok(hwnd) = win.hwnd() {
@@ -162,6 +163,7 @@ fn toggle_mini_player(app: tauri::AppHandle) {
             }
             #[cfg(not(target_os = "windows"))]
             let _ = win.show();
+            let _ = app.emit("sonus:mini-shown", ());
         }
     } else if let Ok(win) = tauri::WebviewWindowBuilder::new(&app, "mini-player", tauri::WebviewUrl::App("mini.html".into()))
         .title("Sonus Mini Player").inner_size(348.0, 136.0).resizable(false).decorations(false).transparent(true).always_on_top(true).skip_taskbar(true).focused(false).build()
@@ -175,6 +177,7 @@ fn toggle_mini_player(app: tauri::AppHandle) {
         }
         #[cfg(not(target_os = "windows"))]
         let _ = win.show();
+        let _ = app.emit("sonus:mini-shown", ());
     }
 }
 

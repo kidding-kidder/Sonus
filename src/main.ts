@@ -93,6 +93,8 @@ class SonusApp {
         positionMs: this.player.state.position_ms,
         durationMs: this.player.state.duration_ms,
       });
+    }, (_posMs, _durMs) => {
+      this.miniPlayer?.syncState();
     });
 
     this.taskbar = new TaskbarBridge({
