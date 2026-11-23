@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.17",
+    version: "v0.1.18",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Spotify In-Browser Audio Playback: Songs can now be played directly inside the embedded Spotify browser or launched via the 'Play' button on any song in your Liked Songs list.",
+    ],
+    fixes: [
+      "Enabled WebView2 Protected Media (DRM/EME) and Autoplay permissions and switched internal sync messaging to out-of-band document title events so audio playback is never interrupted.",
+    ],
+  },
+  {
+    version: "v0.1.17",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Most Recently Added Ordering for Spotify Liked Songs: Synced Spotify Liked Songs now strictly preserve their exact most-recently-added order across all synced batches.",
     ],

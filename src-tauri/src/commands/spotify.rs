@@ -37,19 +37,25 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
 
   function flushIpcQueue() {
     if (ipcBusy || ipcQueue.length === 0) return;
-    if (document.readyState !== 'complete' && document.readyState !== 'interactive') {
+    if (!document.body) {
       setTimeout(flushIpcQueue, 300);
       return;
     }
     ipcBusy = true;
     const nextUrl = ipcQueue.shift();
+    const prevTitle = (document.title && !document.title.startsWith('sonus://')) ? document.title : 'Spotify';
     try {
-      window.location.href = nextUrl;
+      document.title = nextUrl;
     } catch (e) {}
     setTimeout(() => {
+      try {
+        if (document.title === nextUrl) {
+          document.title = prevTitle;
+        }
+      } catch (e) {}
       ipcBusy = false;
       flushIpcQueue();
-    }, 160);
+    }, 65);
   }
 
   function sendSonusIpc(path, paramsObj) {
@@ -400,6 +406,13 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
 
   setInterval(() => {
     ensureFloatingBar();
+    if (window.location.hash === '#sonus_autoplay') {
+      const playBtn = document.querySelector('[data-testid="action-bar-row"] [data-testid="play-button"]') || document.querySelector('main [data-testid="play-button"]');
+      if (playBtn) {
+        window.location.hash = '';
+        playBtn.click();
+      }
+    }
     if (window.location.pathname.includes('/collection/tracks')) {
       const before = window.__SONUS_CAPTURED_TRACKS__.size;
       scrapeVisibleDomTracks();
@@ -407,7 +420,7 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
         pushCapturedTracksToBackend(true);
       }
     }
-  }, 1800);
+  }, 1200);
 })();
 "#;
 
@@ -648,10 +661,19 @@ pub async fn show_spotify_browser(
     let parsed_url = tauri::Url::parse(SPOTIFY_HOME_URL).map_err(|e| e.to_string())?;
     let app_handle = app.clone();
     let db_pool = Arc::clone(db.inner());
+    let app_for_title = app.clone();
+    let db_for_title = Arc::clone(db.inner());
 
     let builder = WebviewBuilder::new(SPOTIFY_WEBVIEW_LABEL, WebviewUrl::External(parsed_url))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
         .initialization_script(SPOTIFY_INIT_SCRIPT)
+        .on_permission_request(|_wv, _kind| tauri::webview::PermissionResponse::Allow)
+        .on_document_title_changed(move |_wv, title| {
+            if title.starts_with("sonus://") {
+                if let Ok(nav_url) = tauri::Url::parse(&title) {
+                    handle_sonus_scheme(&app_for_title, &db_for_title, &nav_url);
+                }
+            }
+        })
         .on_navigation(move |nav_url| {
             if nav_url.scheme() == "sonus" {
                 handle_sonus_scheme(&app_handle, &db_pool, nav_url);
@@ -723,8 +745,8 @@ pub async fn spotify_browser_navigate(app: AppHandle, action: String) -> Result<
             "home" => "window.location.href = 'https://open.spotify.com';".to_string(),
             "login" => "window.location.href = 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2Fcollection%2Ftracks';".to_string(),
             other if other.starts_with("url:") => {
-                let target = &other[4..];
-                format!("window.location.href = {};", serde_json::to_string(target).unwrap_or_else(|_| "'https://open.spotify.com'".to_string()))
+                let target = format!("{}#sonus_autoplay", &other[4..]);
+                format!("window.location.href = {};", serde_json::to_string(&target).unwrap_or_else(|_| "'https://open.spotify.com'".to_string()))
             }
             _ => return Ok(()),
         };

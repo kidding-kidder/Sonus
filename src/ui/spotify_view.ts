@@ -484,24 +484,36 @@ export class SpotifyView {
           : `<div style="width: 38px; height: 38px; border-radius: 6px; background: var(--color-bg-elevated); display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); flex-shrink: 0;"><span style="width: 16px; height: 16px;">${ICONS.music}</span></div>`;
 
         let actionHtml = "";
+        const playBtnHtml = t.spotify_url
+          ? `<button type="button" class="btn-sp-play-browser btn-secondary" data-track-id="${this.escape(t.id)}" title="Play song in Spotify browser" style="padding: 4px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 600; cursor: pointer;">Play</button>`
+          : "";
         if (t.is_in_library) {
           actionHtml = `
-            <span style="background: rgba(34, 197, 94, 0.14); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;">Downloaded</span>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+              ${playBtnHtml}
+              <span style="background: rgba(34, 197, 94, 0.14); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;">Downloaded</span>
+            </div>
           `;
         } else if (isQueued) {
           actionHtml = `
-            <span style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;">Queued</span>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+              ${playBtnHtml}
+              <span style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;">Queued</span>
+            </div>
           `;
         } else {
           actionHtml = `
-            <button type="button" class="btn-sp-dl-single" data-track-id="${this.escape(t.id)}" style="background: rgba(29, 185, 84, 0.15); color: #1DB954; border: 1px solid rgba(29, 185, 84, 0.35); border-radius: var(--radius-full); padding: 5px 14px; font-size: var(--font-size-xs); font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
-              Download
-            </button>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+              ${playBtnHtml}
+              <button type="button" class="btn-sp-dl-single" data-track-id="${this.escape(t.id)}" style="background: rgba(29, 185, 84, 0.15); color: #1DB954; border: 1px solid rgba(29, 185, 84, 0.35); border-radius: var(--radius-full); padding: 5px 14px; font-size: var(--font-size-xs); font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
+                Download
+              </button>
+            </div>
           `;
         }
 
         return `
-          <div class="sp-track-row" data-track-id="${this.escape(t.id)}" style="display: grid; grid-template-columns: 36px minmax(220px, 2.2fr) minmax(140px, 1.3fr) 70px 140px; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--color-border); font-size: var(--font-size-sm);">
+          <div class="sp-track-row" data-track-id="${this.escape(t.id)}" style="display: grid; grid-template-columns: 36px minmax(220px, 2.2fr) minmax(140px, 1.3fr) 70px 185px; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--color-border); font-size: var(--font-size-sm);">
             <div style="display: flex; align-items: center; justify-content: center;">
               <input type="checkbox" class="sp-row-checkbox" data-track-id="${this.escape(t.id)}" ${checked ? "checked" : ""} style="cursor: pointer; width: 15px; height: 15px; accent-color: #1DB954;" />
             </div>
@@ -527,7 +539,7 @@ export class SpotifyView {
       .join("");
 
     return `
-      <div style="position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 36px minmax(220px, 2.2fr) minmax(140px, 1.3fr) 70px 140px; align-items: center; gap: 12px; padding: 10px 16px; background: var(--color-bg-elevated); border-bottom: 1px solid var(--color-border); font-size: 11px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px;">
+      <div style="position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 36px minmax(220px, 2.2fr) minmax(140px, 1.3fr) 70px 185px; align-items: center; gap: 12px; padding: 10px 16px; background: var(--color-bg-elevated); border-bottom: 1px solid var(--color-border); font-size: 11px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px;">
         <div style="display: flex; align-items: center; justify-content: center;">
           <input type="checkbox" id="sp-select-all-checkbox" ${allFilteredSelected ? "checked" : ""} title="Select all visible songs" style="cursor: pointer; width: 15px; height: 15px; accent-color: #1DB954;" />
         </div>
@@ -622,6 +634,20 @@ export class SpotifyView {
         const track = this.tracks.find((t) => t.id === id);
         if (!track) return;
         await this.enqueueSingleDownload(track);
+      });
+    });
+
+    slot.querySelectorAll<HTMLElement>(".btn-sp-play-browser").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.trackId;
+        const track = this.tracks.find((t) => t.id === id);
+        if (!track || !track.spotify_url) return;
+        this.mode = "browser";
+        this.updateHeaderIndicators();
+        this.renderBodyMode();
+        setTimeout(() => {
+          api.spotifyBrowserNavigate(`url:${track.spotify_url}`).catch(() => {});
+        }, 120);
       });
     });
   }

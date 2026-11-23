@@ -31,16 +31,14 @@ pub fn configure_webview_environment() {
     #[cfg(target_os = "windows")]
     {
         let current_args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
-        let optimize_args = "--disable-features=Translate,MediaRouter,OptimizationHints,InterestFeedContentSuggestions,CalculateNativeWinOcclusion,BackForwardCache,AutofillServerCommunication,CertificateTransparencyComponentUpdater,SpeechRecognition \
-            --disable-component-update \
-            --disable-background-networking \
+        let optimize_args = "--disable-features=Translate,OptimizationHints,InterestFeedContentSuggestions,CalculateNativeWinOcclusion,BackForwardCache,AutofillServerCommunication,SpeechRecognition \
             --disable-sync \
             --disable-domain-reliability \
             --disable-breakpad \
             --disable-speech-api \
             --disable-speech-synthesis-api \
-            --disable-extensions \
             --disable-default-apps \
+            --autoplay-policy=no-user-gesture-required \
             --enable-smooth-scrolling";
         let combined = if current_args.is_empty() {
             optimize_args.to_string()
