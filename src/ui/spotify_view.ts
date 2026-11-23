@@ -133,7 +133,7 @@ export class SpotifyView {
       this.unlistenVolumeFn();
       this.unlistenVolumeFn = null;
     }
-    api.hideSpotifyBrowser().catch(() => {});
+    api.closeSpotifyBrowser().catch(() => {});
   }
 
   private async reloadCachedData(): Promise<void> {
@@ -417,7 +417,7 @@ export class SpotifyView {
         });
       }
     } else {
-      api.hideSpotifyBrowser().catch(() => {});
+      api.closeSpotifyBrowser().catch(() => {});
       this.renderLikedContent();
     }
   }
@@ -732,12 +732,14 @@ export class SpotifyView {
         const id = btn.dataset.trackId;
         const track = this.tracks.find((t) => t.id === id);
         if (!track || !track.spotify_url) return;
+        const urlCmd = `url:${track.spotify_url}`;
+        api.spotifyBrowserNavigate(urlCmd).catch(() => {});
         this.mode = "browser";
         this.updateHeaderIndicators();
         this.renderBodyMode();
         setTimeout(() => {
-          api.spotifyBrowserNavigate(`url:${track.spotify_url}`).catch(() => {});
-        }, 120);
+          api.spotifyBrowserNavigate(urlCmd).catch(() => {});
+        }, 300);
       });
     });
   }

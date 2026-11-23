@@ -338,6 +338,7 @@ export const api = {
   showSpotifyBrowser: (x: number, y: number, width: number, height: number) =>
     invoke<void>("show_spotify_browser", { x, y, width, height }),
   hideSpotifyBrowser: () => invoke<void>("hide_spotify_browser"),
+  closeSpotifyBrowser: () => invoke<void>("close_spotify_browser"),
   updateSpotifyBrowserBounds: (x: number, y: number, width: number, height: number) =>
     invoke<void>("update_spotify_browser_bounds", { x, y, width, height }),
   spotifyBrowserNavigate: (action: string) =>

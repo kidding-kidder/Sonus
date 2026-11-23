@@ -425,6 +425,7 @@ fn main() {
             // Spotify in-app browser & liked songs commands
             commands::spotify::show_spotify_browser,
             commands::spotify::hide_spotify_browser,
+            commands::spotify::close_spotify_browser,
             commands::spotify::update_spotify_browser_bounds,
             commands::spotify::spotify_browser_navigate,
             commands::spotify::sync_spotify_liked_tracks,

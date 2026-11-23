@@ -58,7 +58,7 @@ class SonusApp {
       onToggleNowPlayingPanel: () => this.nowPlayingPanel.toggleCollapse(),
       onToggleShuffle: () => this.player.toggleShuffle(), onCycleRepeat: () => this.player.cycleRepeat(), onToggleQueue: () => this.nowPlayingPanel.showQueueTab(),
       onWindowStartDragging: () => api.windowStartDragging(), onWindowMinimize: () => api.windowMinimize(),
-      onWindowToggleMaximize: () => api.windowToggleMaximize(), onWindowClose: () => { this.finderView?.stopPreview(); this.recommendedView?.stopPreview(); api.windowClose(); },
+      onWindowToggleMaximize: () => api.windowToggleMaximize(), onWindowClose: () => { this.finderView?.stopPreview(); this.recommendedView?.stopPreview(); api.closeSpotifyBrowser().catch(() => {}); api.windowClose(); },
     });
 
     this.nowPlayingPanel = new NowPlayingPanel(() => this.shell.getNowPlayingPanelContainer(), {
@@ -193,7 +193,7 @@ class SonusApp {
     this.spotifyView?.destroy();
     this.spotifyView = null;
     if (view !== "spotify") {
-      api.hideSpotifyBrowser().catch(() => {});
+      api.closeSpotifyBrowser().catch(() => {});
     }
     this.recommendedView?.destroy();
     this.recommendedView = null;

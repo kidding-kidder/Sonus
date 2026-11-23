@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.19",
+    version: "v0.1.20",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "On-Demand Spotify Browser Lifecycle: The embedded Spotify WebView2 process is now completely closed and destroyed when you navigate to any other tab or sub-tab, freeing memory and CPU resources.",
+    ],
+    fixes: [
+      "Spotify session state, cookies, and login credentials remain securely preserved on disk in the WebView2 profile, enabling instant re-opening whenever you return to the Spotify tab.",
+    ],
+  },
+  {
+    version: "v0.1.19",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Spotify In-App Browser Volume Control: Added a dedicated volume slider and mute toggle directly in the Spotify In-App Browser header, fully synchronized with Sonus's master volume controls.",
     ],

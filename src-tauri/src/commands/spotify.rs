@@ -16,6 +16,7 @@ const SPOTIFY_HOME_URL: &str = "https://open.spotify.com/collection/tracks";
 
 static LAST_CAPTURED_TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static LAST_SPOTIFY_VOLUME: OnceLock<Mutex<f64>> = OnceLock::new();
+static PENDING_TARGET_URL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static SHOULD_BE_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 fn token_store() -> &'static Mutex<Option<String>> {
@@ -24,6 +25,10 @@ fn token_store() -> &'static Mutex<Option<String>> {
 
 fn volume_store() -> &'static Mutex<f64> {
     LAST_SPOTIFY_VOLUME.get_or_init(|| Mutex::new(0.5))
+}
+
+fn target_url_store() -> &'static Mutex<Option<String>> {
+    PENDING_TARGET_URL.get_or_init(|| Mutex::new(None))
 }
 
 const SPOTIFY_INIT_SCRIPT: &str = r#"
@@ -579,6 +584,7 @@ fn handle_sonus_scheme(app: &AppHandle, db: &DbPool, url: &tauri::Url) {
                 let _ = wv.set_size(LogicalSize::new(0.0, 0.0));
                 let _ = wv.set_position(LogicalPosition::new(-10000.0, -10000.0));
                 let _ = wv.hide();
+                let _ = wv.close();
             }
             let _ = app.emit("sonus:spotify-switch-to-liked", 0usize);
         }
@@ -762,7 +768,12 @@ pub async fn show_spotify_browser(
         .get_window("main")
         .ok_or_else(|| "Main window not found".to_string())?;
 
-    let parsed_url = tauri::Url::parse(SPOTIFY_HOME_URL).map_err(|e| e.to_string())?;
+    let target_url = target_url_store()
+        .lock()
+        .ok()
+        .and_then(|mut g| g.take())
+        .unwrap_or_else(|| SPOTIFY_HOME_URL.to_string());
+    let parsed_url = tauri::Url::parse(&target_url).map_err(|e| e.to_string())?;
     let app_handle = app.clone();
     let db_pool = Arc::clone(db.inner());
     let app_for_title = app.clone();
@@ -814,11 +825,17 @@ pub async fn hide_spotify_browser(app: AppHandle) -> Result<(), String> {
         let _ = wv.set_size(LogicalSize::new(0.0, 0.0));
         let _ = wv.set_position(LogicalPosition::new(-10000.0, -10000.0));
         let _ = wv.hide();
+        let _ = wv.close();
     }
     if let Some(main_wv) = app.get_webview("main") {
         let _ = main_wv.set_focus();
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn close_spotify_browser(app: AppHandle) -> Result<(), String> {
+    hide_spotify_browser(app).await
 }
 
 #[tauri::command]
@@ -841,6 +858,12 @@ pub async fn update_spotify_browser_bounds(
 
 #[tauri::command]
 pub async fn spotify_browser_navigate(app: AppHandle, action: String) -> Result<(), String> {
+    if action.starts_with("url:") {
+        let target = format!("{}#sonus_autoplay", &action[4..]);
+        if let Ok(mut g) = target_url_store().lock() {
+            *g = Some(target);
+        }
+    }
     if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
         let script = match action.as_str() {
             "back" => "window.history.back();".to_string(),
