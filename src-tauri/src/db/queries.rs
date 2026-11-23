@@ -420,39 +420,124 @@ pub fn save_spotify_liked_tracks(conn: &Connection, tracks: &[crate::model::Spot
 }
 
 pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::SpotifyLikedTrack>> {
-    // Load existing library tracks to cross-reference is_in_library
-    let mut lib_stmt = conn.prepare("SELECT title, artist FROM tracks")?;
-    let lib_pairs: Vec<(String, String)> = lib_stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+    // Load existing library tracks (including file path) to cross-reference is_in_library
+    let mut lib_stmt = conn.prepare("SELECT title, artist, path FROM tracks")?;
+    let lib_rows: Vec<(String, String, String)> = lib_stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
         .filter_map(|r| r.ok())
         .collect();
 
+    // Normalize string: strip parentheticals if alphanumeric remains; if pure symbols (e.g. "♪ ☊♪☊"),
+    // preserve the non-whitespace symbol characters so symbol-only titles still match accurately.
     let norm = |s: &str| -> String {
         let mut out = String::new();
         let mut in_p = 0;
         for c in s.chars() {
-            if c == '(' || c == '[' { in_p += 1; continue; }
-            if c == ')' || c == ']' { if in_p > 0 { in_p -= 1; } continue; }
+            if c == '(' || c == '[' {
+                in_p += 1;
+                continue;
+            }
+            if c == ')' || c == ']' {
+                if in_p > 0 {
+                    in_p -= 1;
+                }
+                continue;
+            }
             if in_p == 0 && c.is_alphanumeric() {
-                for lc in c.to_lowercase() { out.push(lc); }
+                for lc in c.to_lowercase() {
+                    out.push(lc);
+                }
             }
         }
         if out.is_empty() {
-            s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
+            let alnum: String = s
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(|c| c.to_lowercase())
+                .collect();
+            if !alnum.is_empty() {
+                alnum
+            } else {
+                // Pure symbol / emoji title (like weirdo girl's "♪ ☊♪☊ ♪☊ ♪♪ ☊ ♪☊ ♪")
+                s.chars()
+                    .filter(|c| !c.is_whitespace())
+                    .flat_map(|c| c.to_lowercase())
+                    .collect()
+            }
         } else {
             out
         }
     };
 
+    let strip_track_num_prefix = |stem: &str| -> String {
+        let trimmed = stem.trim();
+        if let Some(pos) = trimmed.find(" - ") {
+            let prefix = &trimmed[..pos];
+            if !prefix.is_empty() && prefix.chars().all(|c| c.is_ascii_digit()) {
+                return trimmed[pos + 3..].trim().to_string();
+            }
+        }
+        trimmed.to_string()
+    };
+
     let mut lib_keys = std::collections::HashSet::new();
     let mut lib_titles = std::collections::HashSet::new();
-    for (title, artist) in &lib_pairs {
+    let mut lib_artist_Titles: Vec<(String, String)> = Vec::new();
+    let mut lib_symbol_artists = std::collections::HashSet::new();
+
+    for (title, artist, path) in &lib_rows {
         let nt = norm(title);
         let na = norm(artist);
+        let title_has_alnum = title.chars().any(|c| c.is_alphanumeric());
+
+        if !title_has_alnum && !na.is_empty() {
+            lib_symbol_artists.insert(na.clone());
+        }
+
         if !nt.is_empty() {
-            lib_keys.insert((nt.clone(), na));
+            lib_keys.insert((nt.clone(), na.clone()));
+            lib_artist_Titles.push((nt.clone(), na.clone()));
             if nt.len() >= 4 {
-                lib_titles.insert(nt);
+                lib_titles.insert(nt.clone());
+            }
+        }
+
+        // If title itself is formatted like "Artist - Song Title" (common from YouTube tags)
+        if let Some(pos) = title.find(" - ") {
+            let part_a = norm(&title[..pos]);
+            let part_t = norm(&title[pos + 3..]);
+            if !part_t.is_empty() && !part_a.is_empty() {
+                lib_keys.insert((part_t.clone(), part_a.clone()));
+                lib_artist_Titles.push((part_t.clone(), part_a));
+                if part_t.len() >= 4 {
+                    lib_titles.insert(part_t);
+                }
+            }
+        }
+
+        // Also index from the filename stem on disk (e.g. "014 - wifiskeleton - oh and one last thing.mp3" or "weirdo girl - ♪ ☊♪☊.mp3")
+        if let Some(stem) = std::path::Path::new(path).file_stem().and_then(|s| s.to_str()) {
+            let cleaned_stem = strip_track_num_prefix(stem);
+            if let Some(pos) = cleaned_stem.find(" - ") {
+                let file_a = norm(&cleaned_stem[..pos]);
+                let raw_file_t = &cleaned_stem[pos + 3..];
+                let file_t = norm(raw_file_t);
+                if !raw_file_t.chars().any(|c| c.is_alphanumeric()) && !file_a.is_empty() {
+                    lib_symbol_artists.insert(file_a.clone());
+                }
+                if !file_t.is_empty() {
+                    lib_keys.insert((file_t.clone(), file_a.clone()));
+                    lib_artist_Titles.push((file_t.clone(), file_a));
+                    if file_t.len() >= 4 {
+                        lib_titles.insert(file_t);
+                    }
+                }
             }
         }
     }
@@ -460,7 +545,7 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
     let mut stmt = conn.prepare(
         "SELECT id, title, artist, album, cover_url, duration_ms, added_at, spotify_url
          FROM spotify_liked_tracks
-         ORDER BY CASE WHEN added_at != '' THEN added_at ELSE CAST(synced_at AS TEXT) END DESC"
+         ORDER BY CASE WHEN added_at != '' THEN added_at ELSE CAST(synced_at AS TEXT) END DESC",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -477,13 +562,20 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
         let primary_artist = artist.split(',').next().unwrap_or(&artist);
         let na = norm(primary_artist);
         let na_full = norm(&artist);
+        let is_symbol_only_title = !title.chars().any(|c| c.is_alphanumeric());
 
-        let is_in_library = (!nt.is_empty() && (lib_keys.contains(&(nt.clone(), na.clone())) || lib_keys.contains(&(nt.clone(), na_full))))
-            || (nt.len() >= 6 && lib_titles.contains(&nt) && lib_pairs.iter().any(|(lt, la)| {
-                let lnt = norm(lt);
-                let lna = norm(la);
-                lnt == nt && (!na.is_empty() && (lna.contains(&na) || na.contains(&lna)))
-            }));
+        let is_in_library = (!nt.is_empty()
+            && (lib_keys.contains(&(nt.clone(), na.clone()))
+                || lib_keys.contains(&(nt.clone(), na_full.clone()))))
+            || (is_symbol_only_title && !na.is_empty() && lib_symbol_artists.contains(&na))
+            || (!nt.is_empty()
+                && lib_titles.contains(&nt)
+                && lib_artist_Titles.iter().any(|(lnt, lna)| {
+                    lnt == &nt
+                        && !na.is_empty()
+                        && !lna.is_empty()
+                        && (lna.contains(&na) || na.contains(lna))
+                }));
 
         Ok(crate::model::SpotifyLikedTrack {
             id,

@@ -4,10 +4,19 @@ use super::queue::sanitize_filename;
 use super::spotify::is_audio_file;
 
 pub fn normalize_match_str(s: &str) -> String {
-    s.chars()
+    let alnum: String = s
+        .chars()
         .filter(|c| c.is_alphanumeric())
         .collect::<String>()
-        .to_lowercase()
+        .to_lowercase();
+    if alnum.is_empty() {
+        s.chars()
+            .filter(|c| !c.is_whitespace())
+            .flat_map(|c| c.to_lowercase())
+            .collect()
+    } else {
+        alnum
+    }
 }
 
 pub fn find_existing_track_for_spotify(

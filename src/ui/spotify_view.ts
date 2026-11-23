@@ -486,10 +486,7 @@ export class SpotifyView {
         let actionHtml = "";
         if (t.is_in_library) {
           actionHtml = `
-            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
-              <span style="background: rgba(34, 197, 94, 0.14); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;">✓ In Library</span>
-              <button type="button" class="btn-sp-dl-single btn-secondary" data-track-id="${this.escape(t.id)}" title="Download again" style="padding: 4px 8px; border-radius: var(--radius-md); font-size: 11px;">⬇</button>
-            </div>
+            <span style="background: rgba(34, 197, 94, 0.14); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;">✓ Downloaded</span>
           `;
         } else if (isQueued) {
           actionHtml = `
@@ -630,9 +627,12 @@ export class SpotifyView {
   }
 
   private async enqueueSingleDownload(track: SpotifyLikedTrack): Promise<void> {
+    if (track.is_in_library) return;
     try {
       this.queuedIds.add(track.id);
-      const query = `ytsearch1:${track.artist} - ${track.title} audio`;
+      const query = track.spotify_url && track.spotify_url.startsWith("https://open.spotify.com/track/")
+        ? track.spotify_url
+        : `ytsearch1:${track.artist} - ${track.title} audio`;
       await api.enqueueDownload(query, "spotify");
       ToastManager.get().success(`Queued "${track.title}" by ${track.artist}`);
       this.callbacks.onDownloadQueued();
@@ -644,12 +644,15 @@ export class SpotifyView {
   }
 
   private async enqueueBatchDownloads(tracks: SpotifyLikedTrack[]): Promise<void> {
-    if (tracks.length === 0) return;
+    const missingTracks = tracks.filter((t) => !t.is_in_library);
+    if (missingTracks.length === 0) return;
     let count = 0;
-    for (const track of tracks) {
+    for (const track of missingTracks) {
       try {
         this.queuedIds.add(track.id);
-        const query = `ytsearch1:${track.artist} - ${track.title} audio`;
+        const query = track.spotify_url && track.spotify_url.startsWith("https://open.spotify.com/track/")
+          ? track.spotify_url
+          : `ytsearch1:${track.artist} - ${track.title} audio`;
         await api.enqueueDownload(query, "spotify");
         count++;
       } catch {}

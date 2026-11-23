@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.15",
+    version: "v0.1.16",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Accurate Symbol & Filename Matching for Downloaded Songs: Songs with symbol-only titles (such as weirdo girl's '♪ ☊♪☊...') and downloaded tracks with custom tags are now accurately detected as already downloaded.",
+    ],
+    fixes: [
+      "Already-downloaded tracks in Spotify Liked Songs now display a clean '✓ Downloaded' badge without a redundant download button.",
+    ],
+  },
+  {
+    version: "v0.1.15",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Embedded In-Tab Spotify Browser: The Spotify browser now renders directly inside the Spotify tab (no pop-out window) with sub-tabs to switch between the live browser and your synced Liked Songs list.",
     ],
