@@ -27,9 +27,12 @@ export class SpotifyView {
   };
   private isSyncing: boolean = false;
   private isDestroyed: boolean = false;
+  private currentVolume: number = 0.5;
+  private lastNonZeroVolume: number = 0.5;
   private resizeObserver: ResizeObserver | null = null;
   private unlistenUpdatedFn: UnlistenFn | null = null;
   private unlistenSwitchFn: UnlistenFn | null = null;
+  private unlistenVolumeFn: UnlistenFn | null = null;
   private windowResizeHandler: () => void;
 
   constructor(container: HTMLElement, callbacks: SpotifyViewCallbacks) {
@@ -51,6 +54,32 @@ export class SpotifyView {
       this.tracks = cachedTracks;
       this.accountStatus = status;
     } catch {}
+
+    try {
+      const saved = localStorage.getItem("sonus_spotify_volume");
+      if (saved !== null) {
+        const v = parseFloat(saved);
+        if (!isNaN(v)) this.currentVolume = Math.max(0, Math.min(1, v));
+      } else {
+        const backendVol = await api.getSpotifyBrowserVolume().catch(() => 0.5);
+        this.currentVolume = Math.max(0, Math.min(1, backendVol));
+      }
+      if (this.currentVolume > 0.05) this.lastNonZeroVolume = this.currentVolume;
+    } catch {}
+
+    listen<number>("sonus:spotify-volume-changed", (event) => {
+      if (this.isDestroyed) return;
+      const v = typeof event.payload === "number" ? Math.max(0, Math.min(1, event.payload)) : 0.5;
+      this.currentVolume = v;
+      if (v > 0.05) this.lastNonZeroVolume = v;
+      this.updateVolumeVisual(v);
+      try { localStorage.setItem("sonus_spotify_volume", String(v)); } catch {}
+    })
+      .then((unlisten) => {
+        if (this.isDestroyed) unlisten();
+        else this.unlistenVolumeFn = unlisten;
+      })
+      .catch(() => {});
 
     listen<number>("sonus:spotify-updated", async () => {
       if (this.isDestroyed) return;
@@ -99,6 +128,10 @@ export class SpotifyView {
     if (this.unlistenSwitchFn) {
       this.unlistenSwitchFn();
       this.unlistenSwitchFn = null;
+    }
+    if (this.unlistenVolumeFn) {
+      this.unlistenVolumeFn();
+      this.unlistenVolumeFn = null;
     }
     api.hideSpotifyBrowser().catch(() => {});
   }
@@ -155,6 +188,15 @@ export class SpotifyView {
             <button id="btn-sp-login" class="btn-secondary" title="Go to Spotify Login Page" style="padding: 5px 12px; border-radius: var(--radius-full); font-size: var(--font-size-xs);">
               Sign In Page
             </button>
+
+            <!-- Browser Audio Volume Control -->
+            <div style="display: flex; align-items: center; gap: 6px; margin-left: 4px; padding: 3px 8px; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: var(--radius-full);">
+              <button id="btn-sp-vol-toggle" type="button" title="Mute / Unmute Spotify Browser" style="background: transparent; border: none; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--color-text-secondary); cursor: pointer; width: 14px; height: 14px;">
+                ${ICONS.volume}
+              </button>
+              <input type="range" id="spotify-volume-slider" min="0" max="1" step="0.01" value="${this.currentVolume}" style="width: 75px; accent-color: #1DB954; cursor: pointer;" title="Spotify Browser Volume" />
+              <span id="spotify-volume-label" style="font-size: 11px; font-family: var(--font-family-mono); color: var(--color-text-primary); font-weight: 600; width: 28px; text-align: right; user-select: none;">${Math.round(this.currentVolume * 100)}%</span>
+            </div>
           </div>
 
           <!-- Right: Account Status & Sync Action -->
@@ -216,6 +258,28 @@ export class SpotifyView {
 
     this.container.querySelector("#btn-sp-sync")?.addEventListener("click", () => {
       this.handleSyncLikedSongs();
+    });
+
+    const volSlider = this.container.querySelector<HTMLInputElement>("#spotify-volume-slider");
+    volSlider?.addEventListener("input", () => {
+      const v = Math.max(0, Math.min(1, Number(volSlider.value)));
+      this.currentVolume = v;
+      if (v > 0.05) this.lastNonZeroVolume = v;
+      this.updateVolumeVisual(v);
+      api.setSpotifyBrowserVolume(v).catch(() => {});
+      try {
+        localStorage.setItem("sonus_spotify_volume", String(v));
+      } catch {}
+    });
+
+    this.container.querySelector("#btn-sp-vol-toggle")?.addEventListener("click", () => {
+      const nextVol = this.currentVolume > 0.01 ? 0 : (this.lastNonZeroVolume || 0.5);
+      this.currentVolume = nextVol;
+      this.updateVolumeVisual(nextVol);
+      api.setSpotifyBrowserVolume(nextVol).catch(() => {});
+      try {
+        localStorage.setItem("sonus_spotify_volume", String(nextVol));
+      } catch {}
     });
   }
 
@@ -358,14 +422,40 @@ export class SpotifyView {
     }
   }
 
+  public syncVolume(v: number): void {
+    const clamped = Math.max(0, Math.min(1, v));
+    this.currentVolume = clamped;
+    if (clamped > 0.05) this.lastNonZeroVolume = clamped;
+    this.updateVolumeVisual(clamped);
+    api.setSpotifyBrowserVolume(clamped).catch(() => {});
+    try {
+      localStorage.setItem("sonus_spotify_volume", String(clamped));
+    } catch {}
+  }
+
+  private updateVolumeVisual(val: number): void {
+    const slider = this.container.querySelector<HTMLInputElement>("#spotify-volume-slider");
+    const label = this.container.querySelector<HTMLElement>("#spotify-volume-label");
+    if (slider && Math.abs(Number(slider.value) - val) > 0.01) {
+      slider.value = String(val);
+    }
+    if (label) {
+      label.textContent = `${Math.round(val * 100)}%`;
+    }
+  }
+
   private showBrowserAtMount(): void {
     const mountEl = this.container.querySelector<HTMLElement>("#spotify-browser-mount");
     if (!mountEl || this.isDestroyed || this.mode !== "browser") return;
     const rect = mountEl.getBoundingClientRect();
     if (rect.width < 50 || rect.height < 50) return;
-    api.showSpotifyBrowser(rect.left, rect.top, rect.width, rect.height).catch((err) => {
-      ToastManager.get().error(`Could not open embedded browser: ${String(err)}`);
-    });
+    api.showSpotifyBrowser(rect.left, rect.top, rect.width, rect.height)
+      .then(() => {
+        api.setSpotifyBrowserVolume(this.currentVolume).catch(() => {});
+      })
+      .catch((err) => {
+        ToastManager.get().error(`Could not open embedded browser: ${String(err)}`);
+      });
   }
 
   private syncBrowserBounds(): void {

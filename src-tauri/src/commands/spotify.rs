@@ -15,10 +15,15 @@ const SPOTIFY_WEBVIEW_LABEL: &str = "spotify-browser";
 const SPOTIFY_HOME_URL: &str = "https://open.spotify.com/collection/tracks";
 
 static LAST_CAPTURED_TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static LAST_SPOTIFY_VOLUME: OnceLock<Mutex<f64>> = OnceLock::new();
 static SHOULD_BE_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 fn token_store() -> &'static Mutex<Option<String>> {
     LAST_CAPTURED_TOKEN.get_or_init(|| Mutex::new(None))
+}
+
+fn volume_store() -> &'static Mutex<f64> {
+    LAST_SPOTIFY_VOLUME.get_or_init(|| Mutex::new(0.5))
 }
 
 const SPOTIFY_INIT_SCRIPT: &str = r#"
@@ -31,6 +36,83 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
   window.__SONUS_LAST_LIBRARY_REQ__ = null;
   window.__SONUS_USER_NAME__ = null;
   window.__SONUS_USER_AVATAR__ = null;
+  window.__sonus_sp_volume = 0.5;
+
+  function setSliderValue(slider, val) {
+    if (!slider) return;
+    const min = parseFloat(slider.min) || 0;
+    const max = parseFloat(slider.max) || 1;
+    const targetVal = max > 1 ? (min + val * (max - min)) : val;
+    try {
+      const proto = window.HTMLInputElement.prototype;
+      const setNative = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setNative) {
+        setNative.call(slider, String(targetVal));
+      } else {
+        slider.value = String(targetVal);
+      }
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      slider.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (e) {}
+  }
+
+  function applyVolume(vol) {
+    const clamped = Math.max(0, Math.min(1, typeof vol === 'number' ? vol : 0.5));
+    window.__sonus_sp_volume = clamped;
+
+    document.querySelectorAll('audio, video').forEach(el => {
+      try {
+        el.volume = clamped;
+      } catch (e) {}
+    });
+
+    try {
+      const sliders = document.querySelectorAll('[data-testid="volume-bar"] input[type="range"], input[type="range"][aria-label*="volume" i], input[type="range"][data-testid*="volume" i]');
+      sliders.forEach(s => setSliderValue(s, clamped));
+    } catch (e) {}
+  }
+  window.__sonusSetVolume = applyVolume;
+
+  const origPlay = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function() {
+    if (typeof window.__sonus_sp_volume === 'number') {
+      try {
+        this.volume = Math.max(0, Math.min(1, window.__sonus_sp_volume));
+      } catch (e) {}
+    }
+    return origPlay.apply(this, arguments);
+  };
+
+  document.addEventListener('play', (e) => {
+    if (e.target && typeof e.target.volume === 'number' && typeof window.__sonus_sp_volume === 'number') {
+      try {
+        e.target.volume = Math.max(0, Math.min(1, window.__sonus_sp_volume));
+      } catch (err) {}
+    }
+  }, true);
+
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t && t.tagName === 'INPUT') {
+      const label = (t.getAttribute('aria-label') || '').toLowerCase();
+      const testid = (t.getAttribute('data-testid') || '').toLowerCase();
+      const parentTestid = (t.parentElement?.getAttribute('data-testid') || '').toLowerCase();
+      if (testid.includes('volume') || parentTestid.includes('volume') || label.includes('volume')) {
+        const min = parseFloat(t.min) || 0;
+        const max = parseFloat(t.max) || 1;
+        const raw = parseFloat(t.value);
+        if (!isNaN(raw)) {
+          const norm = max > 1 ? ((raw - min) / (max - min)) : raw;
+          const clamped = Math.max(0, Math.min(1, norm));
+          window.__sonus_sp_volume = clamped;
+          document.querySelectorAll('audio, video').forEach(el => {
+            try { el.volume = clamped; } catch (err) {}
+          });
+          sendSonusIpc('volume-changed', { volume: clamped });
+        }
+      }
+    }
+  }, true);
 
   const ipcQueue = [];
   let ipcBusy = false;
@@ -406,6 +488,15 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
 
   setInterval(() => {
     ensureFloatingBar();
+    if (typeof window.__sonus_sp_volume === 'number') {
+      document.querySelectorAll('audio, video').forEach(el => {
+        try {
+          if (Math.abs(el.volume - window.__sonus_sp_volume) > 0.04) {
+            el.volume = window.__sonus_sp_volume;
+          }
+        } catch (e) {}
+      });
+    }
     if (window.location.hash === '#sonus_autoplay') {
       const playBtn = document.querySelector('[data-testid="action-bar-row"] [data-testid="play-button"]') || document.querySelector('main [data-testid="play-button"]');
       if (playBtn) {
@@ -490,6 +581,17 @@ fn handle_sonus_scheme(app: &AppHandle, db: &DbPool, url: &tauri::Url) {
                 let _ = wv.hide();
             }
             let _ = app.emit("sonus:spotify-switch-to-liked", 0usize);
+        }
+        "volume-changed" => {
+            if let Some(vol_str) = pairs.get("volume") {
+                if let Ok(vol) = vol_str.parse::<f64>() {
+                    let clamped = vol.max(0.0).min(1.0);
+                    if let Ok(mut g) = volume_store().lock() {
+                        *g = clamped;
+                    }
+                    let _ = app.emit("sonus:spotify-volume-changed", clamped);
+                }
+            }
         }
         _ => {}
     }
@@ -644,12 +746,14 @@ pub async fn show_spotify_browser(
 
     let pos = LogicalPosition::new(x.max(0.0), y.max(0.0));
     let size = LogicalSize::new(width.max(100.0), height.max(100.0));
+    let cur_vol = volume_store().lock().map(|g| *g).unwrap_or(0.5);
 
     if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
         if SHOULD_BE_VISIBLE.load(Ordering::SeqCst) {
             let _ = wv.set_position(pos);
             let _ = wv.set_size(size);
             let _ = wv.show();
+            let _ = wv.eval(&format!("if (window.__sonusSetVolume) {{ window.__sonusSetVolume({}); }}", cur_vol));
         }
         return Ok(());
     }
@@ -684,6 +788,7 @@ pub async fn show_spotify_browser(
 
     match main_window.add_child(builder, pos, size) {
         Ok(wv) => {
+            let _ = wv.eval(&format!("if (window.__sonusSetVolume) {{ window.__sonusSetVolume({}); }}", cur_vol));
             if SHOULD_BE_VISIBLE.load(Ordering::SeqCst) {
                 let _ = wv.set_position(pos);
                 let _ = wv.set_size(size);
@@ -838,4 +943,26 @@ pub fn clear_spotify_data(
         let _ = wv.eval("window.__SONUS_SPOTIFY_TOKEN__ = null; window.__SONUS_CAPTURED_TRACKS__ && window.__SONUS_CAPTURED_TRACKS__.clear(); window.location.href = 'https://www.spotify.com/logout/';");
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn set_spotify_browser_volume(app: AppHandle, volume: f64) -> Result<(), String> {
+    let clamped = volume.max(0.0).min(1.0);
+    if let Ok(mut g) = volume_store().lock() {
+        *g = clamped;
+    }
+    if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
+        let script = format!(
+            "if (window.__sonusSetVolume) {{ window.__sonusSetVolume({}); }} else {{ window.__sonus_sp_volume = {}; document.querySelectorAll('audio, video').forEach(el => {{ try {{ el.volume = {}; }} catch(e) {{}} }}); }}",
+            clamped, clamped, clamped
+        );
+        let _ = wv.eval(&script);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_spotify_browser_volume() -> Result<f64, String> {
+    let vol = volume_store().lock().map(|g| *g).unwrap_or(0.5);
+    Ok(vol)
 }

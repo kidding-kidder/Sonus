@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.18",
+    version: "v0.1.19",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Spotify In-App Browser Volume Control: Added a dedicated volume slider and mute toggle directly in the Spotify In-App Browser header, fully synchronized with Sonus's master volume controls.",
+    ],
+    fixes: [
+      "Spotify web playback now defaults to a comfortable volume level and dynamically applies your volume settings to HTML5 media elements and Spotify's internal player, preventing sudden loud audio output.",
+    ],
+  },
+  {
+    version: "v0.1.18",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Spotify In-Browser Audio Playback: Songs can now be played directly inside the embedded Spotify browser or launched via the 'Play' button on any song in your Liked Songs list.",
     ],

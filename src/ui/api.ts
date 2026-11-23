@@ -349,4 +349,8 @@ export const api = {
   getSpotifyAccountStatus: () =>
     invoke<SpotifyAccountStatus>("get_spotify_account_status"),
   clearSpotifyData: () => invoke<void>("clear_spotify_data"),
+  setSpotifyBrowserVolume: (volume: number) =>
+    invoke<void>("set_spotify_browser_volume", { volume }),
+  getSpotifyBrowserVolume: () =>
+    invoke<number>("get_spotify_browser_volume"),
 };

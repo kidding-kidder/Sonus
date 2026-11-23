@@ -431,6 +431,8 @@ fn main() {
             commands::spotify::get_cached_spotify_liked_tracks,
             commands::spotify::get_spotify_account_status,
             commands::spotify::clear_spotify_data,
+            commands::spotify::set_spotify_browser_volume,
+            commands::spotify::get_spotify_browser_volume,
         ])
         .run(tauri::generate_context!())
         .expect("error while running sonus desktop application");
