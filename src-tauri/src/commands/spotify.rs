@@ -108,10 +108,10 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
         <span id="sonus-sp-bar-count" style="font-weight:700;color:#e4e4e7;">${window.__SONUS_CAPTURED_TRACKS__.size} Liked Songs captured</span>
       </div>
       <button id="sonus-sp-btn-sync" type="button" style="background:#1DB954;color:#09090b;border:none;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;">
-        ⚡ Sync Liked Songs
+        Sync Liked Songs
       </button>
       <button id="sonus-sp-btn-done" type="button" style="background:#27272a;color:#f4f4f5;border:1px solid #3f3f46;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">
-        💚 View & Download
+        View & Download
       </button>
     `;
 
@@ -266,7 +266,7 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
       const chunk = all.slice(i, i + chunkSize);
       const b64 = toBase64Utf8(JSON.stringify(chunk));
       if (b64) {
-        sendSonusIpc('tracks', { b64 });
+        sendSonusIpc('tracks', { offset: i, b64 });
       }
     }
   }
@@ -334,7 +334,7 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
 
   window.__sonusTriggerSync = async function() {
     try {
-      updateFloatingBar('⏳ Syncing Liked Songs...');
+      updateFloatingBar('Syncing Liked Songs...');
       if (window.__SONUS_LAST_LIBRARY_REQ__) {
         const tpl = window.__SONUS_LAST_LIBRARY_REQ__;
         for (let offset = 0; offset < 1000; offset += 50) {
@@ -390,7 +390,7 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
 
       scrapeVisibleDomTracks();
       pushCapturedTracksToBackend(true);
-      updateFloatingBar('✓ Synced ' + window.__SONUS_CAPTURED_TRACKS__.size + ' Liked Songs!');
+      updateFloatingBar('Synced ' + window.__SONUS_CAPTURED_TRACKS__.size + ' Liked Songs');
       sendSonusIpc('sync-complete', { count: window.__SONUS_CAPTURED_TRACKS__.size });
     } catch (e) {
       pushCapturedTracksToBackend(true);
@@ -450,11 +450,15 @@ fn handle_sonus_scheme(app: &AppHandle, db: &DbPool, url: &tauri::Url) {
         }
         "tracks" => {
             if let Some(b64) = pairs.get("b64") {
+                let chunk_offset = pairs
+                    .get("offset")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(0);
                 if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) {
                     if let Ok(tracks) = serde_json::from_slice::<Vec<SpotifyLikedTrack>>(&bytes) {
                         if !tracks.is_empty() {
                             if let Ok(conn) = db.lock() {
-                                let _ = queries::save_spotify_liked_tracks(&conn, &tracks);
+                                let _ = queries::save_spotify_liked_tracks(&conn, &tracks, chunk_offset);
                             }
                             let _ = app.emit("sonus:spotify-updated", tracks.len());
                         }
@@ -606,7 +610,7 @@ async fn fetch_and_store_spotify_api_tracks(token: &str, db: &DbPool) -> Result<
 
     if !all_tracks.is_empty() {
         if let Ok(conn) = db.lock() {
-            let _ = queries::save_spotify_liked_tracks(&conn, &all_tracks);
+            let _ = queries::save_spotify_liked_tracks(&conn, &all_tracks, 0);
         }
     }
 

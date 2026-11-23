@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.16",
+    version: "v0.1.17",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Most Recently Added Ordering for Spotify Liked Songs: Synced Spotify Liked Songs now strictly preserve their exact most-recently-added order across all synced batches.",
+    ],
+    fixes: [
+      "Clean Text UI: Removed all emojis from the Spotify tab, sub-tabs, navigation buttons, and action badges.",
+    ],
+  },
+  {
+    version: "v0.1.16",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Accurate Symbol & Filename Matching for Downloaded Songs: Songs with symbol-only titles (such as weirdo girl's '♪ ☊♪☊...') and downloaded tracks with custom tags are now accurately detected as already downloaded.",
     ],

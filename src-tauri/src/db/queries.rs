@@ -388,8 +388,12 @@ pub fn deduplicate_library(conn: &Connection) -> Result<usize> {
     Ok(removed)
 }
 
-pub fn save_spotify_liked_tracks(conn: &Connection, tracks: &[crate::model::SpotifyLikedTrack]) -> Result<()> {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+pub fn save_spotify_liked_tracks(
+    conn: &Connection,
+    tracks: &[crate::model::SpotifyLikedTrack],
+    chunk_offset: usize,
+) -> Result<()> {
+    let base_rank: i64 = 1_000_000_000;
     let mut stmt = conn.prepare(
         "INSERT INTO spotify_liked_tracks (id, title, artist, album, cover_url, duration_ms, added_at, spotify_url, synced_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -404,6 +408,7 @@ pub fn save_spotify_liked_tracks(conn: &Connection, tracks: &[crate::model::Spot
             synced_at = excluded.synced_at"
     )?;
     for (idx, t) in tracks.iter().enumerate() {
+        let rank = base_rank - ((chunk_offset + idx) as i64);
         stmt.execute(params![
             t.id,
             t.title,
@@ -413,7 +418,7 @@ pub fn save_spotify_liked_tracks(conn: &Connection, tracks: &[crate::model::Spot
             t.duration_ms,
             t.added_at,
             t.spotify_url,
-            now - (idx as i64)
+            rank
         ])?;
     }
     Ok(())
@@ -488,7 +493,7 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
 
     let mut lib_keys = std::collections::HashSet::new();
     let mut lib_titles = std::collections::HashSet::new();
-    let mut lib_artist_Titles: Vec<(String, String)> = Vec::new();
+    let mut lib_artist_titles: Vec<(String, String)> = Vec::new();
     let mut lib_symbol_artists = std::collections::HashSet::new();
 
     for (title, artist, path) in &lib_rows {
@@ -502,7 +507,7 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
 
         if !nt.is_empty() {
             lib_keys.insert((nt.clone(), na.clone()));
-            lib_artist_Titles.push((nt.clone(), na.clone()));
+            lib_artist_titles.push((nt.clone(), na.clone()));
             if nt.len() >= 4 {
                 lib_titles.insert(nt.clone());
             }
@@ -514,7 +519,7 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
             let part_t = norm(&title[pos + 3..]);
             if !part_t.is_empty() && !part_a.is_empty() {
                 lib_keys.insert((part_t.clone(), part_a.clone()));
-                lib_artist_Titles.push((part_t.clone(), part_a));
+                lib_artist_titles.push((part_t.clone(), part_a));
                 if part_t.len() >= 4 {
                     lib_titles.insert(part_t);
                 }
@@ -533,7 +538,7 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
                 }
                 if !file_t.is_empty() {
                     lib_keys.insert((file_t.clone(), file_a.clone()));
-                    lib_artist_Titles.push((file_t.clone(), file_a));
+                    lib_artist_titles.push((file_t.clone(), file_a));
                     if file_t.len() >= 4 {
                         lib_titles.insert(file_t);
                     }
@@ -545,7 +550,7 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
     let mut stmt = conn.prepare(
         "SELECT id, title, artist, album, cover_url, duration_ms, added_at, spotify_url
          FROM spotify_liked_tracks
-         ORDER BY CASE WHEN added_at != '' THEN added_at ELSE CAST(synced_at AS TEXT) END DESC",
+         ORDER BY CASE WHEN added_at != '' THEN added_at ELSE '' END DESC, synced_at DESC",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -570,7 +575,7 @@ pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::S
             || (is_symbol_only_title && !na.is_empty() && lib_symbol_artists.contains(&na))
             || (!nt.is_empty()
                 && lib_titles.contains(&nt)
-                && lib_artist_Titles.iter().any(|(lnt, lna)| {
+                && lib_artist_titles.iter().any(|(lnt, lna)| {
                     lnt == &nt
                         && !na.is_empty()
                         && !lna.is_empty()
