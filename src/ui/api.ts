@@ -46,6 +46,25 @@ export interface UpdateProgress {
   total_bytes: number;
 }
 
+export interface SpotifyLikedTrack {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  cover_url?: string | null;
+  duration_ms: number;
+  added_at: string;
+  spotify_url: string;
+  is_in_library: boolean;
+}
+
+export interface SpotifyAccountStatus {
+  is_logged_in: boolean;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  total_liked_tracks: number;
+}
+
 export const api = {
   getTracksPage: (offset: number, limit: number = 100) =>
     invoke<Page<TrackItem>>("get_tracks_page", { offset, limit }),
@@ -314,4 +333,20 @@ export const api = {
   getAppVersion: () => invoke<string>("get_app_version"),
   checkForUpdates: () => invoke<UpdateInfo | null>("check_for_updates"),
   applyUpdate: (downloadUrl: string) => invoke<void>("apply_update", { downloadUrl }),
+
+  // Spotify In-App Browser & Liked Songs APIs
+  showSpotifyBrowser: (x: number, y: number, width: number, height: number) =>
+    invoke<void>("show_spotify_browser", { x, y, width, height }),
+  hideSpotifyBrowser: () => invoke<void>("hide_spotify_browser"),
+  updateSpotifyBrowserBounds: (x: number, y: number, width: number, height: number) =>
+    invoke<void>("update_spotify_browser_bounds", { x, y, width, height }),
+  spotifyBrowserNavigate: (action: string) =>
+    invoke<void>("spotify_browser_navigate", { action }),
+  syncSpotifyLikedTracks: () =>
+    invoke<SpotifyLikedTrack[]>("sync_spotify_liked_tracks"),
+  getCachedSpotifyLikedTracks: () =>
+    invoke<SpotifyLikedTrack[]>("get_cached_spotify_liked_tracks"),
+  getSpotifyAccountStatus: () =>
+    invoke<SpotifyAccountStatus>("get_spotify_account_status"),
+  clearSpotifyData: () => invoke<void>("clear_spotify_data"),
 };

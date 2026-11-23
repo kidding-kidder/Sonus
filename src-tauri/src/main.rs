@@ -418,6 +418,15 @@ fn main() {
             commands::updater::get_app_version,
             commands::updater::check_for_updates,
             commands::updater::apply_update,
+            // Spotify in-app browser & liked songs commands
+            commands::spotify::show_spotify_browser,
+            commands::spotify::hide_spotify_browser,
+            commands::spotify::update_spotify_browser_bounds,
+            commands::spotify::spotify_browser_navigate,
+            commands::spotify::sync_spotify_liked_tracks,
+            commands::spotify::get_cached_spotify_liked_tracks,
+            commands::spotify::get_spotify_account_status,
+            commands::spotify::clear_spotify_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running sonus desktop application");

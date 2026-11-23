@@ -145,3 +145,26 @@ pub struct Page<T> {
     pub offset: i64,
     pub limit: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpotifyLikedTrack {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub cover_url: Option<String>,
+    pub duration_ms: i64,
+    pub added_at: String,
+    pub spotify_url: String,
+    #[serde(default)]
+    pub is_in_library: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpotifyAccountStatus {
+    pub is_logged_in: bool,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub total_liked_tracks: usize,
+}
+

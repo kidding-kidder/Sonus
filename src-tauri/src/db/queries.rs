@@ -387,3 +387,127 @@ pub fn deduplicate_library(conn: &Connection) -> Result<usize> {
     }
     Ok(removed)
 }
+
+pub fn save_spotify_liked_tracks(conn: &Connection, tracks: &[crate::model::SpotifyLikedTrack]) -> Result<()> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let mut stmt = conn.prepare(
+        "INSERT INTO spotify_liked_tracks (id, title, artist, album, cover_url, duration_ms, added_at, spotify_url, synced_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            artist = excluded.artist,
+            album = excluded.album,
+            cover_url = excluded.cover_url,
+            duration_ms = excluded.duration_ms,
+            added_at = CASE WHEN excluded.added_at != '' THEN excluded.added_at ELSE spotify_liked_tracks.added_at END,
+            spotify_url = excluded.spotify_url,
+            synced_at = excluded.synced_at"
+    )?;
+    for (idx, t) in tracks.iter().enumerate() {
+        stmt.execute(params![
+            t.id,
+            t.title,
+            t.artist,
+            t.album,
+            t.cover_url,
+            t.duration_ms,
+            t.added_at,
+            t.spotify_url,
+            now - (idx as i64)
+        ])?;
+    }
+    Ok(())
+}
+
+pub fn get_spotify_liked_tracks(conn: &Connection) -> Result<Vec<crate::model::SpotifyLikedTrack>> {
+    // Load existing library tracks to cross-reference is_in_library
+    let mut lib_stmt = conn.prepare("SELECT title, artist FROM tracks")?;
+    let lib_pairs: Vec<(String, String)> = lib_stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let norm = |s: &str| -> String {
+        let mut out = String::new();
+        let mut in_p = 0;
+        for c in s.chars() {
+            if c == '(' || c == '[' { in_p += 1; continue; }
+            if c == ')' || c == ']' { if in_p > 0 { in_p -= 1; } continue; }
+            if in_p == 0 && c.is_alphanumeric() {
+                for lc in c.to_lowercase() { out.push(lc); }
+            }
+        }
+        if out.is_empty() {
+            s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
+        } else {
+            out
+        }
+    };
+
+    let mut lib_keys = std::collections::HashSet::new();
+    let mut lib_titles = std::collections::HashSet::new();
+    for (title, artist) in &lib_pairs {
+        let nt = norm(title);
+        let na = norm(artist);
+        if !nt.is_empty() {
+            lib_keys.insert((nt.clone(), na));
+            if nt.len() >= 4 {
+                lib_titles.insert(nt);
+            }
+        }
+    }
+
+    let mut stmt = conn.prepare(
+        "SELECT id, title, artist, album, cover_url, duration_ms, added_at, spotify_url
+         FROM spotify_liked_tracks
+         ORDER BY CASE WHEN added_at != '' THEN added_at ELSE CAST(synced_at AS TEXT) END DESC"
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let title: String = row.get(1)?;
+        let artist: String = row.get(2)?;
+        let album: String = row.get(3)?;
+        let cover_url: Option<String> = row.get(4)?;
+        let duration_ms: i64 = row.get(5)?;
+        let added_at: String = row.get(6)?;
+        let spotify_url: String = row.get(7)?;
+
+        let nt = norm(&title);
+        let primary_artist = artist.split(',').next().unwrap_or(&artist);
+        let na = norm(primary_artist);
+        let na_full = norm(&artist);
+
+        let is_in_library = (!nt.is_empty() && (lib_keys.contains(&(nt.clone(), na.clone())) || lib_keys.contains(&(nt.clone(), na_full))))
+            || (nt.len() >= 6 && lib_titles.contains(&nt) && lib_pairs.iter().any(|(lt, la)| {
+                let lnt = norm(lt);
+                let lna = norm(la);
+                lnt == nt && (!na.is_empty() && (lna.contains(&na) || na.contains(&lna)))
+            }));
+
+        Ok(crate::model::SpotifyLikedTrack {
+            id,
+            title,
+            artist,
+            album,
+            cover_url,
+            duration_ms,
+            added_at,
+            spotify_url,
+            is_in_library,
+        })
+    })?;
+
+    let mut out = Vec::new();
+    for r in rows {
+        if let Ok(item) = r {
+            out.push(item);
+        }
+    }
+    Ok(out)
+}
+
+pub fn clear_spotify_liked_tracks(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM spotify_liked_tracks", [])?;
+    Ok(())
+}

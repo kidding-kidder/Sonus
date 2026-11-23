@@ -4,4 +4,5 @@ pub mod library;
 pub mod playback;
 pub mod playlists;
 pub mod settings;
+pub mod spotify;
 pub mod updater;

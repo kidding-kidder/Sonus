@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.12",
+    version: "v0.1.13",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Spotify In-App Browser & Liked Songs Tab: Sign into your Spotify account once inside Sonus (session saves automatically), view all your Spotify Liked Songs, and download individual tracks or all missing liked songs in one click.",
+    ],
+    fixes: [
+      "Cross-referenced Spotify Liked Songs against your local Sonus library to highlight songs already downloaded.",
+    ],
+  },
+  {
+    version: "v0.1.12",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Sleep Timer: Now reliably pauses playback at the set time or at the end of the current track.",
     ],

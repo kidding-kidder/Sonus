@@ -102,6 +102,7 @@ export class AppShell {
           <div class="sidebar-section">
             <div class="nav-item ${this.currentView === "all_songs" ? "active" : ""}" data-view="all_songs" title="${STRINGS.nav.allSongs}"><span class="icon">${ICONS.music}</span><span class="sidebar-label">${STRINGS.nav.allSongs}</span></div>
             <div class="nav-item ${this.currentView === "finder" ? "active" : ""}" data-view="finder" title="${STRINGS.nav.finder}"><span class="icon">${ICONS.compass}</span><span class="sidebar-label">${STRINGS.nav.finder}</span></div>
+            <div class="nav-item ${this.currentView === "spotify" ? "active" : ""}" data-view="spotify" title="${STRINGS.nav.spotify}"><span class="icon" style="color: #1DB954;">${ICONS.spotify}</span><span class="sidebar-label">${STRINGS.nav.spotify}</span></div>
           </div>
           <div class="sidebar-section" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
             <div class="sidebar-playlists-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0 var(--space-2) var(--space-2) var(--space-2);">
@@ -183,7 +184,7 @@ export class AppShell {
     }
     if (renameBtn) renameBtn.style.display = "none";
     if (plCoverEl) plCoverEl.style.display = "none";
-    const titles: Record<string, string> = { downloads: STRINGS.nav.downloads, settings: STRINGS.nav.settings, finder: STRINGS.nav.finder };
+    const titles: Record<string, string> = { downloads: STRINGS.nav.downloads, settings: STRINGS.nav.settings, finder: STRINGS.nav.finder, spotify: STRINGS.nav.spotify };
     titleEl.textContent = titles[this.currentView] || STRINGS.nav.allSongs;
   }
 

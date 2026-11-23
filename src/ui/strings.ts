@@ -8,6 +8,7 @@ export const STRINGS = {
     home: "Home",
     allSongs: "Downloaded Songs",
     finder: "Song Finder",
+    spotify: "Spotify",
     liked: "Liked Songs",
     playlists: "Playlists",
     library: "Library",

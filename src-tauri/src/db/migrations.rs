@@ -40,6 +40,29 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         info!("Applied database migration v2: added speed to playlist_tracks");
     }
 
+    if current_version < 3 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS spotify_liked_tracks (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL,
+                album TEXT NOT NULL DEFAULT '',
+                cover_url TEXT,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                added_at TEXT NOT NULL DEFAULT '',
+                spotify_url TEXT NOT NULL DEFAULT '',
+                synced_at INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_spotify_tracks_artist ON spotify_liked_tracks(artist COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_spotify_tracks_title ON spotify_liked_tracks(title COLLATE NOCASE);
+        "#)?;
+        let now = current_timestamp();
+        tx.execute("INSERT OR REPLACE INTO _migrations (version, applied_at) VALUES (3, ?1)", [now])?;
+        tx.commit()?;
+        info!("Applied database migration v3: added spotify_liked_tracks table");
+    }
+
     Ok(())
 }
 

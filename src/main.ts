@@ -7,6 +7,7 @@ import { VirtualTrackList, TrackItem } from "./ui/virtual_list";
 import { PlaylistBanner } from "./ui/playlist_banner";
 import { DownloadsView } from "./ui/downloads_view";
 import { FinderView } from "./ui/finder_view";
+import { SpotifyView } from "./ui/spotify_view";
 import { SettingsView } from "./ui/settings_view";
 import { SettingsManager } from "./ui/settings_manager";
 import { NowPlayingPanel } from "./ui/now_playing_panel";
@@ -30,6 +31,7 @@ class SonusApp {
   private playlistBanner: PlaylistBanner | null = null;
   private settingsView: SettingsView | null = null;
   private finderView: FinderView | null = null;
+  private spotifyView: SpotifyView | null = null;
   private recommendedView: RecommendedSongsView | null = null;
   private pendingPlaylistAdds: Array<{ playlistId: number; title: string; artist: string; url: string }> = [];
   private currentView: string = "all_songs";
@@ -188,6 +190,8 @@ class SonusApp {
     this.downloads.ensurePolling();
     this.finderView?.stopPreview();
     this.finderView = null;
+    this.spotifyView?.destroy();
+    this.spotifyView = null;
     this.recommendedView?.destroy();
     this.recommendedView = null;
     try { (window as any).gc?.(); } catch {}
@@ -215,6 +219,10 @@ class SonusApp {
       this.playlistBanner = null; this.virtualList = null;
       this.finderView = new FinderView(container, { onDownloadQueued: () => this.downloads.refresh() });
       this.finderView.render(); this.shell.updateLibraryStats("");
+    } else if (view === "spotify") {
+      this.playlistBanner = null; this.virtualList = null;
+      this.spotifyView = new SpotifyView(container, { onDownloadQueued: () => this.downloads.refresh() });
+      await this.spotifyView.render(); this.shell.updateLibraryStats("");
     } else if (view === "downloads") {
       const dv = new DownloadsView(container, { onEnqueue: (u, s) => this.downloads.enqueue(u, s), onRetry: (id) => this.downloads.retry(id), onCancel: (id) => this.downloads.cancel(id), onDeleteDownload: (id) => this.downloads.delete(id), onClearCompleted: () => this.downloads.clearCompleted(), onClearCancelledOrFailed: () => this.downloads.clearCancelledOrFailed(), onBatchAction: (a, ids) => this.downloads.batchAction(a, ids), onPlayCompleted: (url) => this.handlePlayDownloaded(url) });
       dv.render(); this.downloads.setView(dv); await this.downloads.refresh(); this.downloads.startPolling();
@@ -443,6 +451,7 @@ class SonusApp {
     }
     if (this.currentView === "all_songs" || this.currentView === "home") await this.loadTracksPage(0);
     else if (this.currentView === "playlist" && this.currentPlaylistId !== undefined) await this.loadPlaylistTracks(this.currentPlaylistId);
+    else if (this.currentView === "spotify") await this.spotifyView?.refreshLibraryState();
   }
   private async handlePlayDownloaded(url: string): Promise<void> {
     const clean = url.replace(/^ytsearch\d*:/, "").replace(/\s+audio$/i, "").trim();
