@@ -10,9 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.20",
+    version: "v0.1.21",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [],
+    fixes: [
+      "Full-Screen Snow Overlay Fix: Fixed an issue where ambient snowfall particles were confined to the top-left corner after window maximization or DPI scaling by adding ResizeObserver tracking, proportional flake redistribution, and removing desynchronized canvas surface clipping.",
+    ],
+  },
+  {
+    version: "v0.1.20",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "On-Demand Spotify Browser Lifecycle: The embedded Spotify WebView2 process is now completely closed and destroyed when you navigate to any other tab or sub-tab, freeing memory and CPU resources.",
     ],

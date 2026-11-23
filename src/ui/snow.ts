@@ -17,24 +17,22 @@ export class SnowOverlay {
   private enabled: boolean = true;
   private width: number = 0;
   private height: number = 0;
-  private readonly flakeCount: number = 24;
+  private readonly flakeCount: number = 36;
   private timerId: number | null = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
     this.canvas = document.createElement("canvas");
     this.canvas.id = "snow-overlay";
     this.canvas.style.position = "fixed";
-    this.canvas.style.top = "0";
-    this.canvas.style.left = "0";
-    this.canvas.style.width = "100%";
-    this.canvas.style.height = "100%";
+    this.canvas.style.inset = "0";
+    this.canvas.style.width = "100vw";
+    this.canvas.style.height = "100vh";
     this.canvas.style.pointerEvents = "none";
     this.canvas.style.zIndex = "5";
     this.canvas.style.opacity = "0.75";
-    this.canvas.style.transform = "translateZ(0)";
-    this.canvas.style.willChange = "transform";
 
-    this.ctx = this.canvas.getContext("2d", { alpha: true, desynchronized: true });
+    this.ctx = this.canvas.getContext("2d", { alpha: true });
     document.body.appendChild(this.canvas);
 
     this.handleResize();
@@ -44,14 +42,35 @@ export class SnowOverlay {
   }
 
   private handleResize(): void {
+    const prevWidth = this.width;
+    const prevHeight = this.height;
     const dpr = window.devicePixelRatio || 1;
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
+    const rect = this.canvas.getBoundingClientRect();
+    const nextWidth = Math.max(rect.width || 0, window.innerWidth || 0);
+    const nextHeight = Math.max(rect.height || 0, window.innerHeight || 0);
+
+    if (nextWidth <= 0 || nextHeight <= 0) return;
+
+    this.width = nextWidth;
+    this.height = nextHeight;
     this.canvas.width = Math.floor(this.width * dpr);
     this.canvas.height = Math.floor(this.height * dpr);
 
     if (this.ctx) {
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    if (this.flakes.length > 0) {
+      if (prevWidth <= 0 || prevHeight <= 0) {
+        this.initFlakes();
+      } else if (Math.abs(this.width - prevWidth) > 20 || Math.abs(this.height - prevHeight) > 20) {
+        const scaleX = this.width / prevWidth;
+        const scaleY = this.height / prevHeight;
+        for (const flake of this.flakes) {
+          flake.x *= scaleX;
+          flake.y *= scaleY;
+        }
+      }
     }
   }
 
@@ -76,13 +95,25 @@ export class SnowOverlay {
       this.handleResize();
     });
 
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.handleResize();
+      });
+      this.resizeObserver.observe(document.documentElement);
+    }
+
+    requestAnimationFrame(() => this.handleResize());
+
     // Zero-overhead backgrounding: pause when window is hidden or blurred
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) this.stop();
       else this.start();
     });
     window.addEventListener("blur", () => this.stop());
-    window.addEventListener("focus", () => this.start());
+    window.addEventListener("focus", () => {
+      this.handleResize();
+      this.start();
+    });
   }
 
   public setEnabled(enabled: boolean): void {

@@ -1,6 +1,6 @@
 [package]
 name = "sonus"
-version = "0.1.20"
+version = "0.1.21"
 description = "Local-first desktop music player and downloader"
 edition = "2021"
 
