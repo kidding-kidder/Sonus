@@ -192,6 +192,9 @@ class SonusApp {
     this.finderView = null;
     this.spotifyView?.destroy();
     this.spotifyView = null;
+    if (view !== "spotify") {
+      api.hideSpotifyBrowser().catch(() => {});
+    }
     this.recommendedView?.destroy();
     this.recommendedView = null;
     try { (window as any).gc?.(); } catch {}

@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.14",
+    version: "v0.1.15",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Embedded In-Tab Spotify Browser: The Spotify browser now renders directly inside the Spotify tab (no pop-out window) with sub-tabs to switch between the live browser and your synced Liked Songs list.",
+    ],
+    fixes: [
+      "Removed WebView2 single-renderer process and 96 MB V8 heap cap that caused embedded Spotify to freeze main window clicks, and added atomic offscreen hiding when switching tabs.",
+    ],
+  },
+  {
+    version: "v0.1.14",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Spotify In-App Browser Window & Floating Sync Bar: Dedicated non-blocking Spotify browser window with built-in 'Sync All Liked Songs' overlay bar.",
     ],

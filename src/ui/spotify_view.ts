@@ -7,11 +7,13 @@ export interface SpotifyViewCallbacks {
   onDownloadQueued: () => void;
 }
 
+type SubMode = "browser" | "liked";
 type FilterMode = "all" | "missing" | "in_library";
 
 export class SpotifyView {
   private container: HTMLElement;
   private callbacks: SpotifyViewCallbacks;
+  private mode: SubMode = "browser";
   private filterMode: FilterMode = "all";
   private searchQuery: string = "";
   private tracks: SpotifyLikedTrack[] = [];
@@ -24,17 +26,21 @@ export class SpotifyView {
     total_liked_tracks: 0,
   };
   private isSyncing: boolean = false;
-  private isOpeningBrowser: boolean = false;
   private isDestroyed: boolean = false;
-  private unlistenFn: UnlistenFn | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private unlistenUpdatedFn: UnlistenFn | null = null;
+  private unlistenSwitchFn: UnlistenFn | null = null;
+  private windowResizeHandler: () => void;
 
   constructor(container: HTMLElement, callbacks: SpotifyViewCallbacks) {
     this.container = container;
     this.callbacks = callbacks;
+    this.windowResizeHandler = () => this.syncBrowserBounds();
   }
 
   public async render(): Promise<void> {
     this.isDestroyed = false;
+    window.addEventListener("resize", this.windowResizeHandler);
 
     try {
       const [cachedTracks, status] = await Promise.all([
@@ -51,11 +57,23 @@ export class SpotifyView {
       await this.reloadCachedData();
     })
       .then((unlisten) => {
-        if (this.isDestroyed) {
-          unlisten();
-        } else {
-          this.unlistenFn = unlisten;
-        }
+        if (this.isDestroyed) unlisten();
+        else this.unlistenUpdatedFn = unlisten;
+      })
+      .catch(() => {});
+
+    listen<number>("sonus:spotify-switch-to-liked", async () => {
+      if (this.isDestroyed) return;
+      await this.reloadCachedData();
+      if (this.mode !== "liked") {
+        this.mode = "liked";
+        this.updateHeaderIndicators();
+        this.renderBodyMode();
+      }
+    })
+      .then((unlisten) => {
+        if (this.isDestroyed) unlisten();
+        else this.unlistenSwitchFn = unlisten;
       })
       .catch(() => {});
 
@@ -69,10 +87,20 @@ export class SpotifyView {
 
   public destroy(): void {
     this.isDestroyed = true;
-    if (this.unlistenFn) {
-      this.unlistenFn();
-      this.unlistenFn = null;
+    window.removeEventListener("resize", this.windowResizeHandler);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
     }
+    if (this.unlistenUpdatedFn) {
+      this.unlistenUpdatedFn();
+      this.unlistenUpdatedFn = null;
+    }
+    if (this.unlistenSwitchFn) {
+      this.unlistenSwitchFn();
+      this.unlistenSwitchFn = null;
+    }
+    api.hideSpotifyBrowser().catch(() => {});
   }
 
   private async reloadCachedData(): Promise<void> {
@@ -85,7 +113,9 @@ export class SpotifyView {
       this.tracks = cachedTracks;
       this.accountStatus = status;
       this.updateHeaderIndicators();
-      this.renderLikedContent();
+      if (this.mode === "liked") {
+        this.renderLikedContent();
+      }
     } catch {}
   }
 
@@ -94,34 +124,45 @@ export class SpotifyView {
 
     this.container.innerHTML = `
       <div style="display: flex; flex-direction: column; height: 100%; gap: var(--space-3); overflow: hidden;">
-        <!-- Top Spotify Banner -->
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); background: linear-gradient(135deg, rgba(29, 185, 84, 0.14) 0%, var(--color-bg-surface) 65%); border: 1px solid rgba(29, 185, 84, 0.28); border-radius: var(--radius-lg); padding: 14px 18px;">
-          <!-- Left: Title & Subtitle -->
-          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-            <div style="width: 42px; height: 42px; border-radius: 12px; background: rgba(29, 185, 84, 0.18); color: #1DB954; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <span style="width: 24px; height: 24px; display: inline-flex;">${ICONS.spotify}</span>
+        <!-- Top Bar -->
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 10px 14px;">
+          <!-- Left: Title & Mode Switcher -->
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="width: 22px; height: 22px; color: #1DB954; display: inline-flex; align-items: center; justify-content: center;">${ICONS.spotify}</span>
+              <span style="font-size: var(--font-size-md); font-weight: 700; color: var(--color-text-primary);">Spotify</span>
             </div>
-            <div>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: var(--font-size-lg); font-weight: 700; color: var(--color-text-primary);">Spotify Liked Songs</span>
-                <span id="spotify-liked-count-badge" style="background: rgba(29, 185, 84, 0.2); color: #1DB954; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700;">${this.tracks.length} songs</span>
-              </div>
-              <div style="font-size: var(--font-size-xs); color: var(--color-text-secondary); margin-top: 2px;">
-                Open the In-App Spotify Browser to sign in (saves your account automatically), then view and download your Liked Songs below.
-              </div>
+
+            <div style="display: flex; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 3px; gap: 4px;">
+              <button id="tab-spotify-browser" type="button" style="border: none; border-radius: var(--radius-full); padding: 6px 14px; font-size: var(--font-size-xs); font-weight: 600; cursor: pointer; transition: all 0.15s ease; display: flex; align-items: center; gap: 6px;">
+                <span>🌐 In-App Browser</span>
+              </button>
+              <button id="tab-spotify-liked" type="button" style="border: none; border-radius: var(--radius-full); padding: 6px 14px; font-size: var(--font-size-xs); font-weight: 600; cursor: pointer; transition: all 0.15s ease; display: flex; align-items: center; gap: 6px;">
+                <span>💚 Liked Songs</span>
+                <span id="spotify-liked-count-badge" style="background: rgba(29, 185, 84, 0.18); color: #1DB954; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;">${this.tracks.length}</span>
+              </button>
             </div>
           </div>
 
-          <!-- Right: Account Status, Open In-App Browser, Sync -->
-          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <div id="spotify-account-pill" style="display: flex; align-items: center; gap: 7px; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 5px 12px; font-size: var(--font-size-xs); color: var(--color-text-secondary);"></div>
-
-            <button id="btn-sp-open-browser" type="button" class="btn-secondary" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: var(--font-size-xs); font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; border-color: rgba(29, 185, 84, 0.45); color: var(--color-text-primary);">
-              <span>🌐 Open Spotify Browser</span>
+          <!-- Center: Browser Nav Controls (visible in browser mode) -->
+          <div id="spotify-browser-controls" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <button id="btn-sp-back" class="btn-secondary" title="Back" style="padding: 5px 10px; border-radius: var(--radius-md); font-size: 12px;">◀</button>
+            <button id="btn-sp-forward" class="btn-secondary" title="Forward" style="padding: 5px 10px; border-radius: var(--radius-md); font-size: 12px;">▶</button>
+            <button id="btn-sp-reload" class="btn-secondary" title="Reload Page" style="padding: 5px 10px; border-radius: var(--radius-md); font-size: 12px;">↻</button>
+            <button id="btn-sp-go-liked" class="btn-secondary" title="Go to Liked Songs in Browser" style="padding: 5px 12px; border-radius: var(--radius-full); font-size: var(--font-size-xs); display: flex; align-items: center; gap: 5px;">
+              <span style="color: #1DB954;">♥</span><span>Open Liked Songs</span>
             </button>
+            <button id="btn-sp-login" class="btn-secondary" title="Go to Spotify Login Page" style="padding: 5px 12px; border-radius: var(--radius-full); font-size: var(--font-size-xs);">
+              Sign In Page
+            </button>
+          </div>
+
+          <!-- Right: Account Status & Sync Action -->
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div id="spotify-account-pill" style="display: flex; align-items: center; gap: 7px; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 4px 12px; font-size: var(--font-size-xs); color: var(--color-text-secondary);"></div>
 
             <button id="btn-sp-sync" type="button" style="background: #1DB954; color: #09090b; border: none; border-radius: var(--radius-full); padding: 7px 16px; font-size: var(--font-size-xs); font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.15s ease;">
-              <span id="sp-sync-label">⚡ Sync Liked Songs</span>
+              <span id="sp-sync-label">⚡ Sync & View Liked Songs</span>
             </button>
           </div>
         </div>
@@ -133,12 +174,44 @@ export class SpotifyView {
 
     this.bindHeaderEvents();
     this.updateHeaderIndicators();
-    this.renderLikedContent();
+    this.renderBodyMode();
   }
 
   private bindHeaderEvents(): void {
-    this.container.querySelector("#btn-sp-open-browser")?.addEventListener("click", () => {
-      this.handleOpenBrowser();
+    this.container.querySelector("#tab-spotify-browser")?.addEventListener("click", () => {
+      if (this.mode !== "browser") {
+        this.mode = "browser";
+        this.updateHeaderIndicators();
+        this.renderBodyMode();
+      }
+    });
+
+    this.container.querySelector("#tab-spotify-liked")?.addEventListener("click", () => {
+      if (this.mode !== "liked") {
+        this.mode = "liked";
+        this.updateHeaderIndicators();
+        this.renderBodyMode();
+      }
+    });
+
+    this.container.querySelector("#btn-sp-back")?.addEventListener("click", () => {
+      api.spotifyBrowserNavigate("back").catch(() => {});
+    });
+
+    this.container.querySelector("#btn-sp-forward")?.addEventListener("click", () => {
+      api.spotifyBrowserNavigate("forward").catch(() => {});
+    });
+
+    this.container.querySelector("#btn-sp-reload")?.addEventListener("click", () => {
+      api.spotifyBrowserNavigate("reload").catch(() => {});
+    });
+
+    this.container.querySelector("#btn-sp-go-liked")?.addEventListener("click", () => {
+      api.spotifyBrowserNavigate("liked_songs").catch(() => {});
+    });
+
+    this.container.querySelector("#btn-sp-login")?.addEventListener("click", () => {
+      api.spotifyBrowserNavigate("login").catch(() => {});
     });
 
     this.container.querySelector("#btn-sp-sync")?.addEventListener("click", () => {
@@ -146,28 +219,36 @@ export class SpotifyView {
     });
   }
 
-  private async handleOpenBrowser(): Promise<void> {
-    if (this.isOpeningBrowser) return;
-    this.isOpeningBrowser = true;
-    try {
-      await api.showSpotifyBrowser(0, 0, 1080, 760);
-    } catch (err) {
-      ToastManager.get().error(`Could not open Spotify browser: ${String(err)}`);
-    } finally {
-      this.isOpeningBrowser = false;
-    }
-  }
-
   private updateHeaderIndicators(): void {
+    const tabBrowser = this.container.querySelector<HTMLElement>("#tab-spotify-browser");
+    const tabLiked = this.container.querySelector<HTMLElement>("#tab-spotify-liked");
+    const browserControls = this.container.querySelector<HTMLElement>("#spotify-browser-controls");
     const countBadge = this.container.querySelector<HTMLElement>("#spotify-liked-count-badge");
     const accountPill = this.container.querySelector<HTMLElement>("#spotify-account-pill");
     const syncLabel = this.container.querySelector<HTMLElement>("#sp-sync-label");
 
+    if (tabBrowser) {
+      const act = this.mode === "browser";
+      tabBrowser.style.background = act ? "var(--color-bg-active)" : "transparent";
+      tabBrowser.style.color = act ? "var(--color-text-primary)" : "var(--color-text-secondary)";
+    }
+    if (tabLiked) {
+      const act = this.mode === "liked";
+      tabLiked.style.background = act ? "var(--color-bg-active)" : "transparent";
+      tabLiked.style.color = act ? "var(--color-text-primary)" : "var(--color-text-secondary)";
+    }
+    if (browserControls) {
+      browserControls.style.display = this.mode === "browser" ? "flex" : "none";
+    }
     if (countBadge) {
-      countBadge.textContent = `${this.tracks.length} ${this.tracks.length === 1 ? "song" : "songs"}`;
+      countBadge.textContent = String(this.tracks.length);
     }
     if (syncLabel) {
-      syncLabel.textContent = this.isSyncing ? "⏳ Syncing..." : "⚡ Sync Liked Songs";
+      syncLabel.textContent = this.isSyncing
+        ? "⏳ Syncing..."
+        : this.mode === "browser"
+        ? "⚡ Sync & View Liked Songs"
+        : "⚡ Sync Liked Songs";
     }
     if (accountPill) {
       if (this.accountStatus.is_logged_in) {
@@ -178,7 +259,7 @@ export class SpotifyView {
         accountPill.innerHTML = `
           ${avatarHtml}
           <span style="font-weight: 600; color: var(--color-text-primary);">${name}</span>
-          <button id="btn-sp-logout" title="Clear synced Spotify data & sign out" style="background: transparent; border: none; color: var(--color-text-muted); cursor: pointer; font-size: 11px; padding: 0 2px;">✕</button>
+          <button id="btn-sp-logout" title="Disconnect saved Spotify account" style="background: transparent; border: none; color: var(--color-text-muted); cursor: pointer; font-size: 11px; padding: 0 2px;">✕</button>
         `;
         accountPill.querySelector("#btn-sp-logout")?.addEventListener("click", async (e) => {
           e.stopPropagation();
@@ -188,12 +269,12 @@ export class SpotifyView {
           this.accountStatus = { is_logged_in: false, display_name: null, avatar_url: null, total_liked_tracks: 0 };
           ToastManager.get().info("Spotify account data cleared");
           this.updateHeaderIndicators();
-          this.renderLikedContent();
+          if (this.mode === "liked") this.renderLikedContent();
         });
       } else {
         accountPill.innerHTML = `
           <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-muted); display: inline-block;"></span>
-          <span>Not synced yet</span>
+          <span>Sign in below (auto-saves account)</span>
         `;
       }
     }
@@ -209,14 +290,22 @@ export class SpotifyView {
       if (this.isDestroyed) return;
       this.tracks = synced;
       this.accountStatus = await api.getSpotifyAccountStatus().catch(() => this.accountStatus);
-      this.renderLikedContent();
       if (synced.length > 0) {
         ToastManager.get().success(`Synced ${synced.length} Liked Songs from Spotify!`);
+        if (this.mode === "browser") {
+          this.mode = "liked";
+          this.renderBodyMode();
+        } else {
+          this.renderLikedContent();
+        }
       } else {
         ToastManager.get().info(
-          "Opening Spotify In-App Browser — sign in and open your Liked Songs, then click '⚡ Sync All Liked Songs' in the corner!",
+          "No liked songs detected yet — sign into Spotify in the In-App Browser below and open your Liked Songs.",
         );
-        await this.handleOpenBrowser();
+        if (this.mode !== "browser") {
+          this.mode = "browser";
+          this.renderBodyMode();
+        }
       }
     } catch (err) {
       ToastManager.get().error(`Spotify sync failed: ${String(err)}`);
@@ -224,6 +313,68 @@ export class SpotifyView {
       this.isSyncing = false;
       this.updateHeaderIndicators();
     }
+  }
+
+  private renderBodyMode(): void {
+    const slot = this.container.querySelector<HTMLElement>("#spotify-body-slot");
+    if (!slot) return;
+
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+
+    if (this.mode === "browser") {
+      slot.innerHTML = `
+        <div style="display: flex; flex-direction: column; height: 100%; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: rgba(29, 185, 84, 0.08); border: 1px solid rgba(29, 185, 84, 0.25); border-radius: var(--radius-md); font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+            <span>💡 <strong>Tip:</strong> Sign into your Spotify account directly below — Sonus saves your login and syncs your <strong>Liked Songs</strong> so you can view & download them in the <strong>💚 Liked Songs</strong> tab above.</span>
+            <span style="color: #1DB954; font-weight: 600;">open.spotify.com</span>
+          </div>
+          <div id="spotify-browser-mount" style="flex: 1; min-height: 240px; width: 100%; border-radius: var(--radius-lg); border: 1px solid var(--color-border); background: #121212; position: relative; overflow: hidden;">
+            <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--color-text-muted); font-size: var(--font-size-sm);">
+              <span style="width: 36px; height: 36px; color: #1DB954;">${ICONS.spotify}</span>
+              <span>Loading Embedded Spotify Browser...</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const mountEl = slot.querySelector<HTMLElement>("#spotify-browser-mount");
+      if (mountEl) {
+        this.resizeObserver = new ResizeObserver(() => {
+          this.syncBrowserBounds();
+        });
+        this.resizeObserver.observe(mountEl);
+        requestAnimationFrame(() => {
+          if (!this.isDestroyed && this.mode === "browser") {
+            this.showBrowserAtMount();
+          }
+        });
+      }
+    } else {
+      api.hideSpotifyBrowser().catch(() => {});
+      this.renderLikedContent();
+    }
+  }
+
+  private showBrowserAtMount(): void {
+    const mountEl = this.container.querySelector<HTMLElement>("#spotify-browser-mount");
+    if (!mountEl || this.isDestroyed || this.mode !== "browser") return;
+    const rect = mountEl.getBoundingClientRect();
+    if (rect.width < 50 || rect.height < 50) return;
+    api.showSpotifyBrowser(rect.left, rect.top, rect.width, rect.height).catch((err) => {
+      ToastManager.get().error(`Could not open embedded browser: ${String(err)}`);
+    });
+  }
+
+  private syncBrowserBounds(): void {
+    if (this.isDestroyed || this.mode !== "browser") return;
+    const mountEl = this.container.querySelector<HTMLElement>("#spotify-browser-mount");
+    if (!mountEl) return;
+    const rect = mountEl.getBoundingClientRect();
+    if (rect.width < 50 || rect.height < 50) return;
+    api.updateSpotifyBrowserBounds(rect.left, rect.top, rect.width, rect.height).catch(() => {});
   }
 
   private getFilteredTracks(): SpotifyLikedTrack[] {
@@ -242,7 +393,7 @@ export class SpotifyView {
 
   private renderLikedContent(): void {
     const slot = this.container.querySelector<HTMLElement>("#spotify-body-slot");
-    if (!slot) return;
+    if (!slot || this.mode !== "liked") return;
 
     const totalCount = this.tracks.length;
     const inLibCount = this.tracks.filter((t) => t.is_in_library).length;
@@ -298,15 +449,15 @@ export class SpotifyView {
     if (this.tracks.length === 0) {
       return `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 48px 24px; text-align: center; gap: 14px;">
-          <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(29, 185, 84, 0.14); color: #1DB954; display: flex; align-items: center; justify-content: center;">
-            <span style="width: 32px; height: 32px;">${ICONS.spotify}</span>
+          <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(29, 185, 84, 0.12); color: #1DB954; display: flex; align-items: center; justify-content: center;">
+            <span style="width: 30px; height: 30px;">${ICONS.spotify}</span>
           </div>
-          <div style="font-size: var(--font-size-lg); font-weight: 700; color: var(--color-text-primary);">Connect Your Spotify Account</div>
-          <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary); max-width: 500px; line-height: 1.55;">
-            Click below to open Sonus's <strong>Spotify In-App Browser</strong>. Sign into your Spotify account once (your login is saved automatically), open your <strong>Liked Songs</strong>, and click <strong>⚡ Sync All Liked Songs</strong> in the bottom-right corner of the browser window.
+          <div style="font-size: var(--font-size-lg); font-weight: 700; color: var(--color-text-primary);">No Spotify Liked Songs Synced Yet</div>
+          <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary); max-width: 460px; line-height: 1.5;">
+            Switch to the <strong>🌐 In-App Browser</strong> sub-tab above, sign into your Spotify account (it stays saved automatically), and click <strong>⚡ Sync & View Liked Songs</strong>.
           </p>
-          <button id="btn-sp-empty-open-browser" type="button" style="background: #1DB954; color: #09090b; border: none; border-radius: var(--radius-full); padding: 10px 24px; font-size: var(--font-size-sm); font-weight: 700; cursor: pointer; margin-top: 4px; display: inline-flex; align-items: center; gap: 8px;">
-            <span>🌐 Launch Spotify In-App Browser & Sign In</span>
+          <button id="btn-sp-empty-open-browser" type="button" style="background: #1DB954; color: #09090b; border: none; border-radius: var(--radius-full); padding: 9px 22px; font-size: var(--font-size-sm); font-weight: 700; cursor: pointer; margin-top: 4px;">
+            Switch to In-App Browser
           </button>
         </div>
       `;
@@ -438,7 +589,9 @@ export class SpotifyView {
     if (!slot) return;
 
     slot.querySelector("#btn-sp-empty-open-browser")?.addEventListener("click", () => {
-      this.handleOpenBrowser();
+      this.mode = "browser";
+      this.updateHeaderIndicators();
+      this.renderBodyMode();
     });
 
     const selectAllCb = slot.querySelector<HTMLInputElement>("#sp-select-all-checkbox");

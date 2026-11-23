@@ -1,5 +1,10 @@
-use std::sync::{Arc, Mutex, OnceLock};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock,
+};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl,
+};
 use tracing::{info, warn};
 use base64::Engine;
 
@@ -10,6 +15,7 @@ const SPOTIFY_WEBVIEW_LABEL: &str = "spotify-browser";
 const SPOTIFY_HOME_URL: &str = "https://open.spotify.com/collection/tracks";
 
 static LAST_CAPTURED_TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static SHOULD_BE_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 fn token_store() -> &'static Mutex<Option<String>> {
     LAST_CAPTURED_TOKEN.get_or_init(|| Mutex::new(None))
@@ -80,51 +86,45 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
     bar.id = 'sonus-spotify-floating-bar';
     bar.style.cssText = [
       'position: fixed',
-      'bottom: 20px',
-      'right: 20px',
+      'bottom: 18px',
+      'right: 18px',
       'z-index: 2147483647',
       'background: #141417',
       'border: 1.5px solid #1DB954',
       'border-radius: 14px',
-      'padding: 10px 14px',
+      'padding: 9px 14px',
       'box-shadow: 0 14px 36px rgba(0,0,0,0.75)',
       'display: flex',
       'align-items: center',
       'gap: 10px',
       'font-family: system-ui, -apple-system, sans-serif',
       'color: #f4f4f5',
-      'font-size: 12.5px'
+      'font-size: 12px'
     ].join(';');
 
     bar.innerHTML = `
       <div style="display:flex;align-items:center;gap:7px;">
-        <span style="width:9px;height:9px;border-radius:50%;background:#1DB954;display:inline-block;"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:#1DB954;display:inline-block;"></span>
         <span id="sonus-sp-bar-count" style="font-weight:700;color:#e4e4e7;">${window.__SONUS_CAPTURED_TRACKS__.size} Liked Songs captured</span>
       </div>
-      <button id="sonus-sp-btn-liked" type="button" style="background:#27272a;color:#f4f4f5;border:1px solid #3f3f46;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">
-        ♥ Go to Liked Songs
+      <button id="sonus-sp-btn-sync" type="button" style="background:#1DB954;color:#09090b;border:none;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;">
+        ⚡ Sync Liked Songs
       </button>
-      <button id="sonus-sp-btn-sync" type="button" style="background:#1DB954;color:#09090b;border:none;border-radius:999px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;">
-        ⚡ Sync All Liked Songs
-      </button>
-      <button id="sonus-sp-btn-done" type="button" style="background:#27272a;color:#a1a1aa;border:1px solid #3f3f46;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">
-        ✓ Done
+      <button id="sonus-sp-btn-done" type="button" style="background:#27272a;color:#f4f4f5;border:1px solid #3f3f46;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">
+        💚 View & Download
       </button>
     `;
 
     document.body.appendChild(bar);
 
-    document.getElementById('sonus-sp-btn-liked')?.addEventListener('click', () => {
-      window.location.href = 'https://open.spotify.com/collection/tracks';
-    });
     document.getElementById('sonus-sp-btn-sync')?.addEventListener('click', () => {
       if (window.__sonusTriggerSync) window.__sonusTriggerSync();
     });
     document.getElementById('sonus-sp-btn-done')?.addEventListener('click', () => {
-      pushCapturedTracksToBackend();
+      pushCapturedTracksToBackend(true);
       setTimeout(() => {
-        sendSonusIpc('close-browser', {});
-      }, 350);
+        sendSonusIpc('switch-to-liked', {});
+      }, 250);
     });
   }
 
@@ -335,7 +335,6 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
   window.__sonusTriggerSync = async function() {
     try {
       updateFloatingBar('⏳ Syncing Liked Songs...');
-      // 1. If we captured a Pathfinder fetchLibraryTracks template, paginate through all pages!
       if (window.__SONUS_LAST_LIBRARY_REQ__) {
         const tpl = window.__SONUS_LAST_LIBRARY_REQ__;
         for (let offset = 0; offset < 1000; offset += 50) {
@@ -367,14 +366,13 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
             const before = window.__SONUS_CAPTURED_TRACKS__.size;
             inspectJsonPayload(data);
             const items = data?.data?.me?.library?.tracks?.items || [];
-            if (items.length < 50 || window.__SONUS_CAPTURED_TRACKS__.size === before && offset > 0) break;
+            if (items.length < 50 || (window.__SONUS_CAPTURED_TRACKS__.size === before && offset > 0)) break;
           } catch (e) {
             break;
           }
         }
       }
 
-      // 2. Also try v1/me/tracks if bearer token is available
       if (window.__SONUS_SPOTIFY_TOKEN__) {
         sendSonusIpc('token', { token: window.__SONUS_SPOTIFY_TOKEN__ });
         let offset = 0;
@@ -390,7 +388,6 @@ const SPOTIFY_INIT_SCRIPT: &str = r#"
         }
       }
 
-      // 3. Scrape DOM and auto-scroll slightly if on /collection/tracks
       scrapeVisibleDomTracks();
       pushCapturedTracksToBackend(true);
       updateFloatingBar('✓ Synced ' + window.__SONUS_CAPTURED_TRACKS__.size + ' Liked Songs!');
@@ -468,14 +465,14 @@ fn handle_sonus_scheme(app: &AppHandle, db: &DbPool, url: &tauri::Url) {
         "sync-complete" => {
             let _ = app.emit("sonus:spotify-updated", 0usize);
         }
-        "close-browser" => {
-            if let Some(win) = app.get_webview_window(SPOTIFY_WEBVIEW_LABEL) {
-                let _ = win.hide();
+        "switch-to-liked" => {
+            SHOULD_BE_VISIBLE.store(false, Ordering::SeqCst);
+            if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
+                let _ = wv.set_size(LogicalSize::new(0.0, 0.0));
+                let _ = wv.set_position(LogicalPosition::new(-10000.0, -10000.0));
+                let _ = wv.hide();
             }
-            if let Some(main_win) = app.get_webview_window("main") {
-                let _ = main_win.set_focus();
-            }
-            let _ = app.emit("sonus:spotify-updated", 0usize);
+            let _ = app.emit("sonus:spotify-switch-to-liked", 0usize);
         }
         _ => {}
     }
@@ -616,37 +613,39 @@ async fn fetch_and_store_spotify_api_tracks(token: &str, db: &DbPool) -> Result<
     Ok(all_tracks.len())
 }
 
-/// Opens (or focuses) the dedicated Spotify In-App Browser window.
-/// MUST be an `async` command on Windows so WebView2 creation never deadlocks the main UI thread
-/// and never attaches a child HWND over the main Sonus window.
+/// Embeds (or shows & resizes) the Spotify WebView directly inside the Spotify tab area of the main window.
 #[tauri::command]
 pub async fn show_spotify_browser(
     app: AppHandle,
     db: tauri::State<'_, DbPool>,
-    _x: Option<f64>,
-    _y: Option<f64>,
-    _width: Option<f64>,
-    _height: Option<f64>,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
 ) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(SPOTIFY_WEBVIEW_LABEL) {
-        let _ = win.unminimize();
-        let _ = win.show();
-        let _ = win.set_focus();
+    SHOULD_BE_VISIBLE.store(true, Ordering::SeqCst);
+
+    let pos = LogicalPosition::new(x.max(0.0), y.max(0.0));
+    let size = LogicalSize::new(width.max(100.0), height.max(100.0));
+
+    if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
+        if SHOULD_BE_VISIBLE.load(Ordering::SeqCst) {
+            let _ = wv.set_position(pos);
+            let _ = wv.set_size(size);
+            let _ = wv.show();
+        }
         return Ok(());
     }
+
+    let main_window = app
+        .get_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
 
     let parsed_url = tauri::Url::parse(SPOTIFY_HOME_URL).map_err(|e| e.to_string())?;
     let app_handle = app.clone();
     let db_pool = Arc::clone(db.inner());
 
-    let builder = WebviewWindowBuilder::new(&app, SPOTIFY_WEBVIEW_LABEL, WebviewUrl::External(parsed_url))
-        .title("Sonus — Spotify In-App Browser (Sign in & Sync Liked Songs)")
-        .inner_size(1080.0, 760.0)
-        .min_inner_size(700.0, 500.0)
-        .center()
-        .resizable(true)
-        .decorations(true)
-        .focused(true)
+    let builder = WebviewBuilder::new(SPOTIFY_WEBVIEW_LABEL, WebviewUrl::External(parsed_url))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
         .initialization_script(SPOTIFY_INIT_SCRIPT)
         .on_navigation(move |nav_url| {
@@ -657,14 +656,21 @@ pub async fn show_spotify_browser(
             true
         });
 
-    match builder.build() {
-        Ok(win) => {
-            let _ = win.show();
-            let _ = win.set_focus();
+    match main_window.add_child(builder, pos, size) {
+        Ok(wv) => {
+            if SHOULD_BE_VISIBLE.load(Ordering::SeqCst) {
+                let _ = wv.set_position(pos);
+                let _ = wv.set_size(size);
+                let _ = wv.show();
+            } else {
+                let _ = wv.set_size(LogicalSize::new(0.0, 0.0));
+                let _ = wv.set_position(LogicalPosition::new(-10000.0, -10000.0));
+                let _ = wv.hide();
+            }
             Ok(())
         }
         Err(e) => {
-            warn!("Failed to create Spotify In-App Browser window: {}", e);
+            warn!("Failed to create embedded Spotify webview: {}", e);
             Err(e.to_string())
         }
     }
@@ -672,26 +678,39 @@ pub async fn show_spotify_browser(
 
 #[tauri::command]
 pub async fn hide_spotify_browser(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(SPOTIFY_WEBVIEW_LABEL) {
-        let _ = win.hide();
+    SHOULD_BE_VISIBLE.store(false, Ordering::SeqCst);
+    if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
+        let _ = wv.set_size(LogicalSize::new(0.0, 0.0));
+        let _ = wv.set_position(LogicalPosition::new(-10000.0, -10000.0));
+        let _ = wv.hide();
+    }
+    if let Some(main_wv) = app.get_webview("main") {
+        let _ = main_wv.set_focus();
     }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn update_spotify_browser_bounds(
-    _app: AppHandle,
-    _x: f64,
-    _y: f64,
-    _width: f64,
-    _height: f64,
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
 ) -> Result<(), String> {
+    if !SHOULD_BE_VISIBLE.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
+        let _ = wv.set_position(LogicalPosition::new(x.max(0.0), y.max(0.0)));
+        let _ = wv.set_size(LogicalSize::new(width.max(100.0), height.max(100.0)));
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn spotify_browser_navigate(app: AppHandle, action: String) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(SPOTIFY_WEBVIEW_LABEL) {
+    if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
         let script = match action.as_str() {
             "back" => "window.history.back();".to_string(),
             "forward" => "window.history.forward();".to_string(),
@@ -705,7 +724,7 @@ pub async fn spotify_browser_navigate(app: AppHandle, action: String) -> Result<
             }
             _ => return Ok(()),
         };
-        let _ = win.eval(&script);
+        let _ = wv.eval(&script);
     }
     Ok(())
 }
@@ -715,8 +734,8 @@ pub async fn sync_spotify_liked_tracks(
     app: AppHandle,
     db: tauri::State<'_, DbPool>,
 ) -> Result<Vec<SpotifyLikedTrack>, String> {
-    if let Some(win) = app.get_webview_window(SPOTIFY_WEBVIEW_LABEL) {
-        let _ = win.eval("if (window.__sonusTriggerSync) { window.__sonusTriggerSync(); }");
+    if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
+        let _ = wv.eval("if (window.__sonusTriggerSync) { window.__sonusTriggerSync(); }");
     }
 
     let token_opt = {
@@ -734,7 +753,6 @@ pub async fn sync_spotify_liked_tracks(
         let _ = fetch_and_store_spotify_api_tracks(&token, db.inner()).await;
     }
 
-    // Give webview IPC a moment to deliver any newly scraped or Pathfinder-paginated tracks
     tokio::time::sleep(std::time::Duration::from_millis(750)).await;
 
     let conn = db.lock().map_err(|_| "DB lock error".to_string())?;
@@ -790,8 +808,8 @@ pub fn clear_spotify_data(
         let _ = queries::set_setting(&conn, "spotify_user_avatar", "");
         let _ = queries::clear_spotify_liked_tracks(&conn);
     }
-    if let Some(win) = app.get_webview_window(SPOTIFY_WEBVIEW_LABEL) {
-        let _ = win.eval("window.__SONUS_SPOTIFY_TOKEN__ = null; window.__SONUS_CAPTURED_TRACKS__ && window.__SONUS_CAPTURED_TRACKS__.clear(); window.location.href = 'https://www.spotify.com/logout/';");
+    if let Some(wv) = app.get_webview(SPOTIFY_WEBVIEW_LABEL) {
+        let _ = wv.eval("window.__SONUS_SPOTIFY_TOKEN__ = null; window.__SONUS_CAPTURED_TRACKS__ && window.__SONUS_CAPTURED_TRACKS__.clear(); window.location.href = 'https://www.spotify.com/logout/';");
     }
     Ok(())
 }

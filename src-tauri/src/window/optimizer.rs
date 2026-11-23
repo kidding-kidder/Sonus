@@ -31,7 +31,7 @@ pub fn configure_webview_environment() {
     #[cfg(target_os = "windows")]
     {
         let current_args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
-        let optimize_args = "--disable-features=Translate,MediaRouter,OptimizationHints,ProcessPerSiteUpToLimit,InterestFeedContentSuggestions,CalculateNativeWinOcclusion,BackForwardCache,AutofillServerCommunication,CertificateTransparencyComponentUpdater,SpeechRecognition \
+        let optimize_args = "--disable-features=Translate,MediaRouter,OptimizationHints,InterestFeedContentSuggestions,CalculateNativeWinOcclusion,BackForwardCache,AutofillServerCommunication,CertificateTransparencyComponentUpdater,SpeechRecognition \
             --disable-component-update \
             --disable-background-networking \
             --disable-sync \
@@ -41,12 +41,7 @@ pub fn configure_webview_environment() {
             --disable-speech-synthesis-api \
             --disable-extensions \
             --disable-default-apps \
-            --enable-smooth-scrolling \
-            --disk-cache-size=16777216 \
-            --media-cache-size=16777216 \
-            --renderer-process-limit=1 \
-            --enable-low-end-device-mode \
-            --js-flags=--max-old-space-size=96,--optimize-for-size,--expose-gc";
+            --enable-smooth-scrolling";
         let combined = if current_args.is_empty() {
             optimize_args.to_string()
         } else {
