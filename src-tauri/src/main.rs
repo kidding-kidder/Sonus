@@ -334,11 +334,15 @@ fn main() {
             }
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     let _ = commands::finder::cleanup_preview_temp();
                     window.app_handle().exit(0);
                     std::process::exit(0);
+                } else if window.label() == "spotify-browser" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    let _ = tauri::Emitter::emit(window.app_handle(), "sonus:spotify-updated", 0usize);
                 }
             }
         })

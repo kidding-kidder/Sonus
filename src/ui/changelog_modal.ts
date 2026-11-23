@@ -10,9 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.13",
+    version: "v0.1.14",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Spotify In-App Browser Window & Floating Sync Bar: Dedicated non-blocking Spotify browser window with built-in 'Sync All Liked Songs' overlay bar.",
+    ],
+    fixes: [
+      "Fixed Spotify tab freezing clicks when switching between Downloaded Songs and other tabs by moving the Spotify browser from an embedded child HWND to an async top-level WebviewWindow.",
+    ],
+  },
+  {
+    version: "v0.1.13",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [
       "Spotify In-App Browser & Liked Songs Tab: Sign into your Spotify account once inside Sonus (session saves automatically), view all your Spotify Liked Songs, and download individual tracks or all missing liked songs in one click.",
     ],
