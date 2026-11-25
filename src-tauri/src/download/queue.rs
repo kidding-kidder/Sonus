@@ -36,6 +36,20 @@ pub fn sanitize_filename(s: &str) -> String {
     }).collect::<String>().trim().to_string()
 }
 
+fn strip_search_prefix(s: &str) -> String {
+    let mut out = s.trim();
+    for prefix in ["ytsearch1:", "ytsearch5:", "ytsearch:", "scsearch1:", "scsearch5:", "scsearch:"] {
+        if let Some(rest) = out.strip_prefix(prefix) {
+            out = rest.trim();
+            break;
+        }
+    }
+    if out.to_lowercase().ends_with(" audio") && out.len() > 6 {
+        out = out[..out.len() - 6].trim();
+    }
+    out.to_string()
+}
+
 fn check_cancelled(db: &DbPool, item_id: i64) -> bool {
     db.lock().ok().and_then(|c| queries::get_downloads(&c).ok())
         .and_then(|list| list.into_iter().find(|d| d.id == item_id))
@@ -138,7 +152,7 @@ async fn run_worker_loop(
             let mut spotify_tracks_meta: Option<Vec<(String, String)>> = None;
 
             let result = if is_spotify {
-                let meta = spotify::fetch_spotify_meta(&trimmed_url);
+                let meta = spotify::fetch_spotify_meta_with_db(&trimmed_url, Some(&db));
                 match meta {
                     Some(SpotifyItem::Playlist { name, tracks }) | Some(SpotifyItem::Album { name, tracks }) => {
                         detected_playlist_name = name;
@@ -208,32 +222,32 @@ async fn run_worker_loop(
                             let safe_a = sanitize_filename(artist);
                             let safe_t = sanitize_filename(title);
                             let tmpl = format!("{:03} - {} - {}.%(ext)s", i + 1, safe_a, safe_t);
-                            let query = format!("ytsearch1:{} - {} audio", artist, title);
-                            let dl_res = ytdlp_engine.download_audio(&query, &job_dir, false, Some(Arc::clone(&pid_ref)), None, Some(&tmpl)).await;
-                            if dl_res.is_err() {
-                                let sc_query = format!("scsearch1:{} - {}", artist, title);
-                                let _ = ytdlp_engine.download_audio(&sc_query, &job_dir, false, Some(Arc::clone(&pid_ref)), None, Some(&tmpl)).await;
-                            }
+                            let _ = ytdlp_engine
+                                .download_best_match(artist, title, &job_dir, Some(Arc::clone(&pid_ref)), None, Some(&tmpl))
+                                .await;
                         }
                         Ok(spotify::collect_audio_files(&job_dir))
                     }
                     Some(SpotifyItem::Track { artist, title }) => {
+                        if let Ok(conn) = db.lock() {
+                            let msg = format!("10% — Searching for {} - {}", artist, title);
+                            let _ = queries::update_download_status(&conn, item.id, "downloading", Some(&msg));
+                        }
                         let safe_a = sanitize_filename(&artist);
                         let safe_t = sanitize_filename(&title);
                         let tmpl = format!("{} - {}.%(ext)s", safe_a, safe_t);
-                        let query = format!("ytsearch1:{} - {} audio", artist, title);
-                        let dl_res = ytdlp_engine.download_audio(&query, &job_dir, false, Some(Arc::clone(&pid_ref)), Some(Arc::clone(&on_progress)), Some(&tmpl)).await;
-                        if dl_res.is_err() {
-                            let sc_query = format!("scsearch1:{} - {}", artist, title);
-                            ytdlp_engine.download_audio(&sc_query, &job_dir, false, Some(Arc::clone(&pid_ref)), Some(Arc::clone(&on_progress)), Some(&tmpl)).await
-                        } else {
-                            dl_res
-                        }
+                        ytdlp_engine
+                            .download_best_match(
+                                &artist,
+                                &title,
+                                &job_dir,
+                                Some(Arc::clone(&pid_ref)),
+                                Some(Arc::clone(&on_progress)),
+                                Some(&tmpl),
+                            )
+                            .await
                     }
-                    None => {
-                        let query = format!("ytsearch1:{} audio", trimmed_url);
-                        ytdlp_engine.download_audio(&query, &job_dir, false, Some(Arc::clone(&pid_ref)), Some(Arc::clone(&on_progress)), None).await
-                    }
+                    None => Err("Could not fetch metadata from Spotify URL. Please check the link or try again.".to_string()),
                 }
             } else {
                 let is_pl = trimmed_url.contains("playlist") || trimmed_url.contains("list=") || trimmed_url.contains("/sets/");
@@ -280,12 +294,11 @@ async fn run_worker_loop(
                                         Some("SoundCloud stream restricted — downloading clean official audio..."),
                                     );
                                 }
-                                let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
                                 ytdlp_engine
-                                    .download_audio(
-                                        &fallback_query,
+                                    .download_best_match(
+                                        &sc_track.artist,
+                                        &sc_track.title,
                                         &job_dir,
-                                        false,
                                         Some(Arc::clone(&pid_ref)),
                                         Some(Arc::clone(&on_progress)),
                                         Some(&tmpl),
@@ -305,12 +318,11 @@ async fn run_worker_loop(
                                     Some("SoundCloud stream is DRM protected — downloading clean official audio..."),
                                 );
                             }
-                            let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
                             ytdlp_engine
-                                .download_audio(
-                                    &fallback_query,
+                                .download_best_match(
+                                    &sc_track.artist,
+                                    &sc_track.title,
                                     &job_dir,
-                                    false,
                                     Some(Arc::clone(&pid_ref)),
                                     Some(Arc::clone(&on_progress)),
                                     Some(&tmpl),
@@ -340,12 +352,11 @@ async fn run_worker_loop(
                                     if sc_res.is_ok() {
                                         sc_res
                                     } else {
-                                        let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
                                         ytdlp_engine
-                                            .download_audio(
-                                                &fallback_query,
+                                            .download_best_match(
+                                                &sc_track.artist,
+                                                &sc_track.title,
                                                 &job_dir,
-                                                false,
                                                 Some(Arc::clone(&pid_ref)),
                                                 Some(Arc::clone(&on_progress)),
                                                 Some(&tmpl),
@@ -353,12 +364,11 @@ async fn run_worker_loop(
                                             .await
                                     }
                                 } else {
-                                    let fallback_query = format!("ytsearch5:{} - {} audio", sc_track.artist, sc_track.title);
                                     ytdlp_engine
-                                        .download_audio(
-                                            &fallback_query,
+                                        .download_best_match(
+                                            &sc_track.artist,
+                                            &sc_track.title,
                                             &job_dir,
-                                            false,
                                             Some(Arc::clone(&pid_ref)),
                                             Some(Arc::clone(&on_progress)),
                                             Some(&tmpl),
@@ -366,12 +376,10 @@ async fn run_worker_loop(
                                         .await
                                 }
                             } else {
-                                let fallback_query = format!("ytsearch5:{} audio", trimmed_url);
                                 ytdlp_engine
-                                    .download_audio(
-                                        &fallback_query,
+                                    .download_best_free_query(
+                                        &trimmed_url,
                                         &job_dir,
-                                        false,
                                         Some(Arc::clone(&pid_ref)),
                                         Some(Arc::clone(&on_progress)),
                                         None,
@@ -379,12 +387,10 @@ async fn run_worker_loop(
                                     .await
                             }
                         } else {
-                            let fallback_query = format!("ytsearch5:{} audio", trimmed_url);
                             ytdlp_engine
-                                .download_audio(
-                                    &fallback_query,
+                                .download_best_free_query(
+                                    &trimmed_url,
                                     &job_dir,
-                                    false,
                                     Some(Arc::clone(&pid_ref)),
                                     Some(Arc::clone(&on_progress)),
                                     None,
@@ -405,12 +411,11 @@ async fn run_worker_loop(
 
                         if res.is_err() {
                             if let Some((artist, title)) = ytdlp_engine.fetch_metadata_loose(&trimmed_url).await {
-                                let fallback_query = format!("ytsearch5:{} - {} audio", artist, title);
                                 res = ytdlp_engine
-                                    .download_audio(
-                                        &fallback_query,
+                                    .download_best_match(
+                                        &artist,
+                                        &title,
                                         &job_dir,
-                                        false,
                                         Some(Arc::clone(&pid_ref)),
                                         Some(Arc::clone(&on_progress)),
                                         None,
@@ -421,21 +426,29 @@ async fn run_worker_loop(
                         res
                     }
                 } else {
-                    let target = if !is_direct_url {
-                        format!("ytsearch1:{} audio", trimmed_url)
+                    if !is_direct_url || trimmed_url.starts_with("ytsearch") || trimmed_url.starts_with("scsearch") {
+                        let clean_q = strip_search_prefix(&trimmed_url);
+                        ytdlp_engine
+                            .download_best_free_query(
+                                &clean_q,
+                                &job_dir,
+                                Some(Arc::clone(&pid_ref)),
+                                Some(Arc::clone(&on_progress)),
+                                None,
+                            )
+                            .await
                     } else {
-                        trimmed_url.clone()
-                    };
-                    ytdlp_engine
-                        .download_audio(
-                            &target,
-                            &job_dir,
-                            is_playlist,
-                            Some(Arc::clone(&pid_ref)),
-                            Some(Arc::clone(&on_progress)),
-                            None,
-                        )
-                        .await
+                        ytdlp_engine
+                            .download_audio(
+                                &trimmed_url,
+                                &job_dir,
+                                is_playlist,
+                                Some(Arc::clone(&pid_ref)),
+                                Some(Arc::clone(&on_progress)),
+                                None,
+                            )
+                            .await
+                    }
                 };
                 dl_res
             };

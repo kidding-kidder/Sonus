@@ -263,4 +263,409 @@ impl YtDlpEngine {
 
         None
     }
+
+    pub async fn download_best_match(
+        &self,
+        artist: &str,
+        title: &str,
+        output_dir: &Path,
+        active_pid: Option<Arc<AtomicU32>>,
+        on_progress: Option<Arc<dyn Fn(u32, &str) + Send + Sync>>,
+        custom_template: Option<&str>,
+    ) -> Result<Vec<PathBuf>, String> {
+        let primary_artist = extract_primary_artist(artist);
+        let mut queries = vec![format!("ytsearch5:{} {}", title, artist)];
+        if !primary_artist.is_empty() && !primary_artist.eq_ignore_ascii_case(artist.trim()) {
+            queries.push(format!("ytsearch5:{} {}", title, primary_artist));
+        }
+        queries.push(format!("ytsearch5:{} - {} official audio", artist, title));
+        queries.push(format!("scsearch5:{} {}", artist, title));
+
+        for q in &queries {
+            if let Some((score, best_url)) = self.search_best_candidate_url(q, artist, title).await {
+                info!("Matched '{} - {}' -> {} (score={})", artist, title, best_url, score);
+                let res = self
+                    .download_audio(
+                        &best_url,
+                        output_dir,
+                        false,
+                        active_pid.clone(),
+                        on_progress.clone(),
+                        custom_template,
+                    )
+                    .await;
+                if res.is_ok() {
+                    return res;
+                }
+            }
+        }
+
+        Err(format!("No matching audio found for '{} - {}'", artist, title))
+    }
+
+    pub async fn download_best_free_query(
+        &self,
+        raw_query: &str,
+        output_dir: &Path,
+        active_pid: Option<Arc<AtomicU32>>,
+        on_progress: Option<Arc<dyn Fn(u32, &str) + Send + Sync>>,
+        custom_template: Option<&str>,
+    ) -> Result<Vec<PathBuf>, String> {
+        if let Some((artist, title)) = split_artist_title_query(raw_query) {
+            return self
+                .download_best_match(&artist, &title, output_dir, active_pid, on_progress, custom_template)
+                .await;
+        }
+
+        let clean_q = raw_query.trim();
+        let queries = [
+            format!("ytsearch5:{}", clean_q),
+            format!("ytsearch5:{} audio", clean_q),
+            format!("scsearch5:{}", clean_q),
+        ];
+
+        for q in &queries {
+            if let Some((score, best_url)) = self.search_best_candidate_url(q, "", clean_q).await {
+                info!("Matched free query '{}' -> {} (score={})", clean_q, best_url, score);
+                let res = self
+                    .download_audio(
+                        &best_url,
+                        output_dir,
+                        false,
+                        active_pid.clone(),
+                        on_progress.clone(),
+                        custom_template,
+                    )
+                    .await;
+                if res.is_ok() {
+                    return res;
+                }
+            }
+        }
+
+        Err(format!("No matching audio found for '{}'", clean_q))
+    }
+
+    async fn search_best_candidate_url(
+        &self,
+        search_query: &str,
+        target_artist: &str,
+        target_title: &str,
+    ) -> Option<(i32, String)> {
+        let _ = super::bootstrap::ensure_tools_ready().await;
+        let bin = super::resolve_tool_bin("yt-dlp");
+        let mut cmd = Command::new(if bin.exists() { &bin } else { &self.binary_path });
+        super::inject_bundled_path(&mut cmd);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        cmd.kill_on_drop(true);
+        cmd.args([
+            "--flat-playlist",
+            "--dump-json",
+            "--no-warnings",
+            "--no-check-certificates",
+            search_query,
+        ]);
+        cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+
+        let mut child = cmd.spawn().ok()?;
+        let stdout = child.stdout.take()?;
+        let mut reader = tokio::io::BufReader::new(stdout).lines();
+
+        let mut best: Option<(i32, String)> = None;
+
+        let read_loop = async {
+            while let Ok(Some(line)) = reader.next_line().await {
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+                    continue;
+                };
+                let cand_title = v.get("title").and_then(|s| s.as_str()).unwrap_or_default().trim();
+                if cand_title.is_empty() {
+                    continue;
+                }
+                let cand_uploader = v
+                    .get("uploader")
+                    .or_else(|| v.get("channel"))
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .trim();
+                let duration_sec = v
+                    .get("duration")
+                    .and_then(|d| d.as_f64())
+                    .map(|d| d.round() as u32)
+                    .unwrap_or(0);
+                let is_live = v.get("is_live").and_then(|b| b.as_bool()).unwrap_or(false);
+
+                let url = v
+                    .get("webpage_url")
+                    .or_else(|| v.get("url"))
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        v.get("id")
+                            .and_then(|s| s.as_str())
+                            .map(|id| format!("https://www.youtube.com/watch?v={}", id))
+                    })
+                    .unwrap_or_default();
+
+                if url.is_empty() {
+                    continue;
+                }
+
+                let full_url = if url.starts_with("http://") || url.starts_with("https://") {
+                    url
+                } else if let Some(id) = v.get("id").and_then(|s| s.as_str()) {
+                    format!("https://www.youtube.com/watch?v={}", id)
+                } else {
+                    continue;
+                };
+
+                let score = score_candidate(
+                    target_artist,
+                    target_title,
+                    cand_title,
+                    cand_uploader,
+                    duration_sec,
+                    is_live,
+                );
+                if score >= 45 {
+                    if best.as_ref().map_or(true, |(b_score, _)| score > *b_score) {
+                        best = Some((score, full_url));
+                    }
+                }
+            }
+        };
+
+        let _ = timeout(Duration::from_secs(16), read_loop).await;
+        let _ = child.kill().await;
+        best
+    }
+}
+
+pub fn split_artist_title_query(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    if let Some((artist, title)) = trimmed.split_once(" - ") {
+        let a = artist.trim();
+        let t = title.trim();
+        if !a.is_empty() && !t.is_empty() {
+            return Some((a.to_string(), t.to_string()));
+        }
+    }
+    let lower = trimmed.to_lowercase();
+    if let Some(idx) = lower.rfind(" by ") {
+        let title = trimmed[..idx].trim();
+        let artist = trimmed[idx + 4..].trim();
+        if !title.is_empty() && !artist.is_empty() {
+            return Some((artist.to_string(), title.to_string()));
+        }
+    }
+    None
+}
+
+fn extract_primary_artist(artist: &str) -> String {
+    let lower = artist.to_lowercase();
+    let mut cut = artist.len();
+    for sep in [",", "&", " feat.", " feat ", " ft.", " ft ", " x "] {
+        if let Some(pos) = lower.find(sep) {
+            if pos > 0 && pos < cut {
+                cut = pos;
+            }
+        }
+    }
+    artist[..cut].trim().to_string()
+}
+
+fn normalize_tokens(s: &str) -> Vec<String> {
+    s.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .map(|w| w.to_string())
+        .collect()
+}
+
+fn normalize_compact(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+fn strip_artist_decorations(s: &str) -> String {
+    let mut out = s.trim().to_string();
+    for suffix in [" - Topic", " - topic", "VEVO", "Official"] {
+        if out.ends_with(suffix) {
+            out = out[..out.len() - suffix.len()].trim().to_string();
+        }
+    }
+    out
+}
+
+fn score_candidate(
+    target_artist: &str,
+    target_title: &str,
+    cand_title: &str,
+    cand_uploader: &str,
+    duration_sec: u32,
+    is_live: bool,
+) -> i32 {
+    if is_live || (duration_sec > 0 && (duration_sec < 25 || duration_sec > 900)) {
+        return -1000;
+    }
+
+    let lower_target_t = target_title.to_lowercase();
+    let lower_target_a = target_artist.to_lowercase();
+    let lower_cand_t = cand_title.to_lowercase();
+    let lower_cand_u = cand_uploader.to_lowercase();
+
+    for banned in [
+        "reaction",
+        "gameplay",
+        "walkthrough",
+        "tutorial",
+        "#shorts",
+        "unboxing",
+        "podcast",
+        "1 hour",
+        "10 hours",
+    ] {
+        if (lower_cand_t.contains(banned) || lower_cand_u.contains(banned))
+            && !lower_target_t.contains(banned)
+            && !lower_target_a.contains(banned)
+        {
+            return -1000;
+        }
+    }
+
+    for modifier in ["nightcore", "slowed", "sped up", "karaoke", "instrumental", "8d audio"] {
+        if lower_cand_t.contains(modifier) && !lower_target_t.contains(modifier) {
+            return -1000;
+        }
+    }
+
+    let t_compact = normalize_compact(target_title);
+    let c_compact = normalize_compact(cand_title);
+    let t_tokens = normalize_tokens(target_title);
+    let c_tokens = normalize_tokens(cand_title);
+
+    if t_tokens.is_empty() {
+        return -1000;
+    }
+
+    let matched_t = t_tokens.iter().filter(|tok| c_tokens.contains(tok)).count();
+    if matched_t == 0 {
+        return -1000;
+    }
+    if t_tokens.len() >= 2 && (matched_t as f32 / t_tokens.len() as f32) < 0.5 {
+        return -1000;
+    }
+
+    let mut score: i32 = if !t_compact.is_empty() && c_compact.contains(&t_compact) {
+        60
+    } else {
+        ((matched_t as i32) * 40) / (t_tokens.len().max(1) as i32)
+    };
+
+    let has_artist = !target_artist.trim().is_empty()
+        && !target_artist.eq_ignore_ascii_case("Unknown")
+        && !target_artist.eq_ignore_ascii_case("Unknown Artist");
+
+    if has_artist {
+        let clean_uploader = strip_artist_decorations(cand_uploader);
+        let haystack_compact = format!("{}{}", c_compact, normalize_compact(&clean_uploader));
+        let a_compact = normalize_compact(target_artist);
+        let primary_a = extract_primary_artist(target_artist);
+        let primary_a_compact = normalize_compact(&primary_a);
+
+        let mut haystack_tokens = c_tokens.clone();
+        haystack_tokens.extend(normalize_tokens(&clean_uploader));
+
+        let raw_a_tokens = normalize_tokens(target_artist);
+        let filtered_a_tokens: Vec<String> = raw_a_tokens
+            .iter()
+            .filter(|w| !matches!(w.as_str(), "the" | "a" | "an" | "and" | "feat" | "ft"))
+            .cloned()
+            .collect();
+        let a_tokens = if filtered_a_tokens.is_empty() {
+            raw_a_tokens
+        } else {
+            filtered_a_tokens
+        };
+
+        if (!a_compact.is_empty() && haystack_compact.contains(&a_compact))
+            || (!primary_a_compact.is_empty() && haystack_compact.contains(&primary_a_compact))
+        {
+            score += 50;
+        } else {
+            let matched_a = a_tokens.iter().filter(|tok| haystack_tokens.contains(tok)).count();
+            if matched_a == 0 {
+                return -1000;
+            }
+            score += ((matched_a as i32) * 35) / (a_tokens.len().max(1) as i32);
+        }
+    }
+
+    if lower_cand_u.ends_with("- topic") {
+        score += 25;
+    }
+    if lower_cand_t.contains("official audio") {
+        score += 15;
+    } else if lower_cand_t.contains("official") {
+        score += 5;
+    }
+    if lower_cand_t.contains("lyrics") {
+        score += 5;
+    }
+
+    for alt in ["cover", "remix", "live"] {
+        if lower_cand_t.contains(alt) && !lower_target_t.contains(alt) {
+            score -= 25;
+        }
+    }
+
+    score
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_artist_title_query() {
+        assert_eq!(
+            split_artist_title_query("BOMBATHERS - Man Style"),
+            Some(("BOMBATHERS".to_string(), "Man Style".to_string()))
+        );
+        assert_eq!(
+            split_artist_title_query("Man Style by BOMBATHERS"),
+            Some(("BOMBATHERS".to_string(), "Man Style".to_string()))
+        );
+        assert_eq!(split_artist_title_query("Man Style BOMBATHERS"), None);
+    }
+
+    #[test]
+    fn test_score_candidate_rejects_unrelated_song() {
+        let wrong_him = score_candidate("BOMBATHERS", "Man Style", "Join Me In Death", "HIM", 217, false);
+        let wrong_sherine = score_candidate(
+            "BOMBATHERS",
+            "Man Style",
+            "El Watar El Hassas - Sherine",
+            "hana studio",
+            261,
+            false,
+        );
+        let right_topic = score_candidate(
+            "BOMBATHERS",
+            "Man Style",
+            "Man Style",
+            "BOMBATHERS - Topic",
+            180,
+            false,
+        );
+
+        assert!(wrong_him < 0, "Expected HIM - Join Me In Death to be rejected, got {}", wrong_him);
+        assert!(wrong_sherine < 0, "Expected Sherine to be rejected, got {}", wrong_sherine);
+        assert!(right_topic >= 45, "Expected BOMBATHERS - Man Style to score >= 45, got {}", right_topic);
+    }
 }

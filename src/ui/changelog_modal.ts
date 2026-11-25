@@ -10,9 +10,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOGS: ChangelogEntry[] = [
   {
-    version: "v0.1.21",
+    version: "v0.1.22",
     date: "November 2026",
     isLatest: true,
+    newFeatures: [
+      "Verified Track Matching for Downloads: Downloads now inspect candidate search results and verify both title and artist match before downloading, prioritizing official Topic and studio audio uploads.",
+    ],
+    fixes: [
+      "Fixed Wrong-Song Downloads: Fixed an issue where blind ytsearch1 queries (such as 'Man Style by BOMBATHERS') could download completely unrelated tracks like 'HIM - Join Me In Death'.",
+      "Fixed Spotify Song Downloader: Resolved Spotify tracks directly from synced Liked Songs metadata in the local database with oEmbed and browser-UA embed fallbacks, and eliminated broken URL fallback searches.",
+    ],
+  },
+  {
+    version: "v0.1.21",
+    date: "November 2026",
+    isLatest: false,
     newFeatures: [],
     fixes: [
       "Full-Screen Snow Overlay Fix: Fixed an issue where ambient snowfall particles were confined to the top-left corner after window maximization or DPI scaling by adding ResizeObserver tracking, proportional flake redistribution, and removing desynchronized canvas surface clipping.",
